@@ -31,6 +31,12 @@
     <Filter Include="lib\pcan\x86">
       <UniqueIdentifier>{697e3bd0-bcbf-40e6-a9b8-1a3afa93417c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\fsc">
+      <UniqueIdentifier>{87ddb97d-4057-4a3e-b31e-c7ce96bba730}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\fsc">
+      <UniqueIdentifier>{87501984-c22c-4607-81ef-649d1dc273ba}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -75,6 +81,9 @@
     <ClInclude Include="pcan\targetver.h">
       <Filter>Header Files\pcan</Filter>
     </ClInclude>
+    <ClInclude Include="fsc\TimersAndCalculations.h">
+      <Filter>Header Files\fsc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -109,6 +118,9 @@
     </ClCompile>
     <ClCompile Include="pcan\stdafx.cpp">
       <Filter>Source Files\pcan</Filter>
+    </ClCompile>
+    <ClCompile Include="fsc\TimersAndCalculations.cpp">
+      <Filter>Source Files\fsc</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

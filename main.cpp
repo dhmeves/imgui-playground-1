@@ -12,6 +12,8 @@
 #include <d3d11.h>
 #include <tchar.h>
 
+#include "TimersAndCalculations.h"
+
 //START - PCAN - USB READING
 #include "03_ManualRead.h"
 
@@ -154,155 +156,172 @@ int main(int, char**)
     bool done = false;
     while (!done)
     {
+
+
+        // START - GRAB CAN DATA
+        TPCANMsg CANMsg;
+        TPCANTimestamp CANTimeStamp;
+
+        // We execute the "Read" function of the PCANBasic   
+        printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
+        printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
+        printf("\n~~~~~~~~~~~~~~~~~~~~\n");
+        TPCANStatus stsResult = CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp);
+        if (stsResult != PCAN_ERROR_QRCVEMPTY)
+        {
+            switch (CANMsg.ID)
+            {
+            case SENSOR_MM7_C_TELEGRAM_1_ID:
+            {
+                uint16_t yawRate;
+                uint16_t acceleration;
+                uint8_t temperature;
+                ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &yawRate, SENSOR_MM7_TX1_YAW_RATE);
+                ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX1_AY);
+                ExtractUint8FromCanTelegram(CANMsg.DATA, 8, &temperature, SENSOR_MM7_TX1_TEMP_RATE_Z);
+
+                MM7_C_YAW_RATE = GetAngularRateFromMM7Raw(yawRate);
+                MM7_C_AY = GetAccelerationFromMM7Raw(acceleration);
+                MM7_C_TEMP = GetTemperatureFromMM7Raw(temperature);
+                break;
+            }
+            case SENSOR_MM7_C_TELEGRAM_2_ID:
+            {
+                uint16_t rollRate;
+                uint16_t acceleration;
+                ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &rollRate, SENSOR_MM7_TX2_ROLL_RATE);
+                ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX2_AX);
+
+                MM7_C_ROLL_RATE = GetAngularRateFromMM7Raw(rollRate);
+                MM7_C_AX = GetAccelerationFromMM7Raw(acceleration);
+                break;
+            }
+            case SENSOR_MM7_C_TELEGRAM_3_ID:
+            {
+
+                uint16_t pitchRate;
+                uint16_t acceleration;
+                ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &pitchRate, SENSOR_MM7_TX3_PITCH_RATE);
+                ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX3_AZ);
+                MM7_C_PITCH_RATE = GetAngularRateFromMM7Raw(pitchRate);
+                MM7_C_AZ = GetAccelerationFromMM7Raw(acceleration);
+                break;
+            }
+            default:
+            {
+                break;
+            }
+            }
+        }
+        // END - GRAB CAN DATA
+
+        // START - IMGUI LOOP
+        static uint64_t prevRenderTime = 0;
+        const uint64_t renderTimeout = 16;  //  16ms is about 60fps
+        static bool renderFrame = true;
+        if (Timer(prevRenderTime, renderTimeout, true))
+        {
+            renderFrame = !renderFrame;
+        }
         // Poll and handle messages (inputs, window resize, etc.)
         // See the WndProc() function below for our to dispatch events to the Win32 backend.
-        MSG msg;
-        while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
+        if (renderFrame)
         {
-            ::TranslateMessage(&msg);
-            ::DispatchMessage(&msg);
-            if (msg.message == WM_QUIT)
-                done = true;
-        }
-        if (done)
-            break;
-
-        // Handle window resize (we don't resize directly in the WM_SIZE handler)
-        if (g_ResizeWidth != 0 && g_ResizeHeight != 0)
-        {
-            CleanupRenderTarget();
-            g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
-            g_ResizeWidth = g_ResizeHeight = 0;
-            CreateRenderTarget();
-        }
-
-        // Start the Dear ImGui frame
-        ImGui_ImplDX11_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
-
-
-        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-        if (show_pcan_window)
-            ImGui::ShowDemoWindow(&show_pcan_window);
-
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-        {
-
-            ImGui::Begin("PCAN USB");                          // Create a window called "Hello, world!" and append into it.TPCANMsg CANMsg;
-            TPCANMsg CANMsg;
-            TPCANTimestamp CANTimeStamp;
-
-            // We execute the "Read" function of the PCANBasic   
-            printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
-            printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
-            printf("\n~~~~~~~~~~~~~~~~~~~~\n");
-            ImGui::Text("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
-            ImGui::Text("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
-            TPCANStatus stsResult = CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp);
-            if (stsResult != PCAN_ERROR_QRCVEMPTY)
+            MSG msg;
+            while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
             {
-                switch (CANMsg.ID)
-                {
-                case SENSOR_MM7_C_TELEGRAM_1_ID:
-                {
-                    uint16_t yawRate;
-                    uint16_t acceleration;
-                    uint8_t temperature;
-                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &yawRate, SENSOR_MM7_TX1_YAW_RATE);
-                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX1_AY);
-                    ExtractUint8FromCanTelegram(CANMsg.DATA, 8, &temperature, SENSOR_MM7_TX1_TEMP_RATE_Z);
-
-                    MM7_C_YAW_RATE = GetAngularRateFromMM7Raw(yawRate);
-                    MM7_C_AY = GetAccelerationFromMM7Raw(acceleration);
-                    MM7_C_TEMP = GetTemperatureFromMM7Raw(temperature);
-                    break;
-                }
-                case SENSOR_MM7_C_TELEGRAM_2_ID:
-                {
-                    uint16_t rollRate;
-                    uint16_t acceleration;
-                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &rollRate, SENSOR_MM7_TX2_ROLL_RATE);
-                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX2_AX);
-
-                    MM7_C_ROLL_RATE = GetAngularRateFromMM7Raw(rollRate);
-                    MM7_C_AX = GetAccelerationFromMM7Raw(acceleration);
-                    break;
-                }
-                case SENSOR_MM7_C_TELEGRAM_3_ID:
-                {
-
-                    uint16_t pitchRate;
-                    uint16_t acceleration;
-                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &pitchRate, SENSOR_MM7_TX3_PITCH_RATE);
-                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX3_AZ);
-                    MM7_C_PITCH_RATE = GetAngularRateFromMM7Raw(pitchRate);
-                    MM7_C_AZ = GetAccelerationFromMM7Raw(acceleration);
-                    break;
-                }
-                default:
-                {
-                    break;
-                }
-                }
+                ::TranslateMessage(&msg);
+                ::DispatchMessage(&msg);
+                if (msg.message == WM_QUIT)
+                    done = true;
             }
-            ImGui::End();
+            if (done)
+                break;
+
+            // Handle window resize (we don't resize directly in the WM_SIZE handler)
+            if (g_ResizeWidth != 0 && g_ResizeHeight != 0)
+            {
+                CleanupRenderTarget();
+                g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
+                g_ResizeWidth = g_ResizeHeight = 0;
+                CreateRenderTarget();
+            }
+
+            // Start the Dear ImGui frame
+            ImGui_ImplDX11_NewFrame();
+            ImGui_ImplWin32_NewFrame();
+            ImGui::NewFrame();
+
+
+            // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+            if (show_pcan_window)
+                ImGui::ShowDemoWindow(&show_pcan_window);
+
+            // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+            {
+                ImGui::Begin("PCAN USB");                          // Create a window called "Hello, world!" and append into it.TPCANMsg CANMsg;
+                ImGui::Text("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
+                ImGui::Text("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
+                ImGui::End();
+            }
+
+
+
+
+
+
+
+
+
+            // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+            if (show_demo_window)
+                ImGui::ShowDemoWindow(&show_demo_window);
+
+            // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+            {
+                static float f = 0.0f;
+                static int counter = 0;
+
+                ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+                ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+                ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+                ImGui::Checkbox("Another Window", &show_another_window);
+
+                ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+                ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+                if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+                    counter++;
+                ImGui::SameLine();
+                ImGui::Text("counter = %d", counter);
+
+                ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+                ImGui::End();
+            }
+
+            // 3. Show another simple window.
+            if (show_another_window)
+            {
+                ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                ImGui::Text("Hello from another window!");
+                if (ImGui::Button("Close Me"))
+                    show_another_window = false;
+                ImGui::End();
+            }
+
+            // Rendering
+            ImGui::Render();
+            const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
+            g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
+            g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
+            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+            //g_pSwapChain->Present(1, 0); // Present with vsync
+            g_pSwapChain->Present(0, 0); // Present without vsync
         }
-
-
-
-
-
-
-
-
-
-        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
-
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-        {
-            static float f = 0.0f;
-            static int counter = 0;
-
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-            ImGui::Checkbox("Another Window", &show_another_window);
-
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-            ImGui::End();
-        }
-
-        // 3. Show another simple window.
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
-
-        // Rendering
-        ImGui::Render();
-        const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-        g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
-        g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-        g_pSwapChain->Present(1, 0); // Present with vsync
-        //g_pSwapChain->Present(0, 0); // Present without vsync
+        renderFrame = false;
+        // END - IMGUI LOOP
     }
 
     // Cleanup
