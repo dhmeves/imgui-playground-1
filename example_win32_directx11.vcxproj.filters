@@ -13,6 +13,24 @@
     <Filter Include="Header Files\imgui">
       <UniqueIdentifier>{5e198232-1ee8-4fd8-9af8-52396a8a0bd9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\pcan">
+      <UniqueIdentifier>{565ca6d7-9c9b-4408-a97b-37f3e0c4344b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\pcan">
+      <UniqueIdentifier>{4bb80b6f-71ed-403c-8eab-aa2fd5df8116}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib">
+      <UniqueIdentifier>{fc5d79b9-387e-489b-9241-f05f2d37f35e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib\pcan">
+      <UniqueIdentifier>{ae8eff78-f3a8-42a3-977c-bb7de1068e8e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib\pcan\x64">
+      <UniqueIdentifier>{826e2f57-ee96-468d-9d57-50e7d7c0081f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib\pcan\x86">
+      <UniqueIdentifier>{697e3bd0-bcbf-40e6-a9b8-1a3afa93417c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -45,6 +63,18 @@
     <ClInclude Include="imgui\imstb_truetype.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
+    <ClInclude Include="pcan\03_ManualRead.h">
+      <Filter>Header Files\pcan</Filter>
+    </ClInclude>
+    <ClInclude Include="pcan\PCANBasic.h">
+      <Filter>Header Files\pcan</Filter>
+    </ClInclude>
+    <ClInclude Include="pcan\stdafx.h">
+      <Filter>Header Files\pcan</Filter>
+    </ClInclude>
+    <ClInclude Include="pcan\targetver.h">
+      <Filter>Header Files\pcan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -74,8 +104,22 @@
     <ClCompile Include="imgui\imgui_widgets.cpp">
       <Filter>Source Files\imgui</Filter>
     </ClCompile>
+    <ClCompile Include="pcan\03_ManualRead.cpp">
+      <Filter>Source Files\pcan</Filter>
+    </ClCompile>
+    <ClCompile Include="pcan\stdafx.cpp">
+      <Filter>Source Files\pcan</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="pcan\lib\x86\PCANBasic.lib">
+      <Filter>lib\pcan\x86</Filter>
+    </Library>
+    <Library Include="pcan\lib\x64\PCANBasic.lib">
+      <Filter>lib\pcan\x64</Filter>
+    </Library>
   </ItemGroup>
 </Project>

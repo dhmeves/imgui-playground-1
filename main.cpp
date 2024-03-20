@@ -12,12 +12,78 @@
 #include <d3d11.h>
 #include <tchar.h>
 
+//START - PCAN - USB READING
+#include "03_ManualRead.h"
+
+ManualRead CAN;
+
+const TPCANHandle PcanHandle1 = PCAN_USBBUS1;
+//TPCANMsg CANMsg;
+//TPCANTimestamp CANTimeStamp;
+
+
+#define SENSOR_MM7_C_TELEGRAM_1_ID 0x374
+#define SENSOR_MM7_C_TELEGRAM_2_ID 0x378
+#define SENSOR_MM7_C_TELEGRAM_3_ID 0x37C
+
+typedef struct // Same as Codesys SPN configuration, location of byte, bit inside that byte, and how long the value is
+{
+    uint8_t byte;
+    uint8_t bit;
+    uint8_t len;
+} SPN_Config;
+
+const SPN_Config SENSOR_MM7_TX1_YAW_RATE = { 0, 0, 16 };
+const SPN_Config SENSOR_MM7_TX1_CLU_STAT = { 2, 0, 4 };
+const SPN_Config SENSOR_MM7_TX1_YAW_RATE_STAT = { 2, 4, 4 };
+const SPN_Config SENSOR_MM7_TX1_TEMP_RATE_Z = { 3, 0, 8 };
+const SPN_Config SENSOR_MM7_TX1_AY = { 4, 0, 16 };
+const SPN_Config SENSOR_MM7_TX1_MSG_CNT = { 6, 0, 4 };
+const SPN_Config SENSOR_MM7_TX1_AY_STAT = { 6, 4, 4 };
+const SPN_Config SENSOR_MM7_TX1_CRC = { 7, 0, 8 };
+
+const SPN_Config SENSOR_MM7_TX2_ROLL_RATE = { 0, 0, 16 };
+const SPN_Config SENSOR_MM7_TX2_CLU_STAT5 = { 2, 0, 4 };
+const SPN_Config SENSOR_MM7_TX2_ROLL_RATE_STAT = { 2, 4, 4 };
+const SPN_Config SENSOR_MM7_TX2_CLU_DIAG = { 3, 0, 8 };
+const SPN_Config SENSOR_MM7_TX2_AX = { 4, 0, 16 };
+const SPN_Config SENSOR_MM7_TX2_MSG_CNT = { 6, 0, 4 };
+const SPN_Config SENSOR_MM7_TX2_AX_STAT = { 6, 4, 4 };
+const SPN_Config SENSOR_MM7_TX2_CRC = { 7, 0, 8 };
+
+const SPN_Config SENSOR_MM7_TX3_PITCH_RATE = { 0, 0, 16 };
+const SPN_Config SENSOR_MM7_TX3_HW_INDEX = { 2, 0, 4 };
+const SPN_Config SENSOR_MM7_TX3_PITCH_RATE_STAT = { 2, 4, 4 };
+const SPN_Config SENSOR_MM7_TX3_RESERVED = { 3, 0, 8 };
+const SPN_Config SENSOR_MM7_TX3_AZ = { 4, 0, 16 };
+const SPN_Config SENSOR_MM7_TX3_MSG_CNT = { 6, 0, 4 };
+const SPN_Config SENSOR_MM7_TX3_AZ_STAT = { 6, 4, 4 };
+const SPN_Config SENSOR_MM7_TX3_CRC = { 7, 0, 8 };
+
+
+float GetAngularRateFromMM7Raw(uint16_t input);
+float GetAccelerationFromMM7Raw(uint16_t input);
+int16_t GetTemperatureFromMM7Raw(uint8_t input);
+int ExtractBoolFromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, bool* output, SPN_Config spnConfig);
+int ExtractUint16FromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, uint16_t* output, SPN_Config spnConfig);
+int ExtractUint8FromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, uint8_t* output, SPN_Config spnConfig);
+
+
+float MM7_C_YAW_RATE;
+float MM7_C_ROLL_RATE;
+float MM7_C_PITCH_RATE;
+float MM7_C_AX;
+float MM7_C_AY;
+float MM7_C_AZ;
+int16_t MM7_C_TEMP;
+//END - PCAN - USB READING
+
 // Data
-static ID3D11Device*            g_pd3dDevice = nullptr;
-static ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
-static IDXGISwapChain*          g_pSwapChain = nullptr;
+static ID3D11Device* g_pd3dDevice = nullptr;
+static ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
+static IDXGISwapChain* g_pSwapChain = nullptr;
 static UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
-static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
+static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 
 // Forward declarations of helper functions
 bool CreateDeviceD3D(HWND hWnd);
@@ -79,6 +145,7 @@ int main(int, char**)
     //IM_ASSERT(font != nullptr);
 
     // Our state
+    bool show_pcan_window = true;
     bool show_demo_window = true;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -113,6 +180,82 @@ int main(int, char**)
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
+
+
+        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+        if (show_pcan_window)
+            ImGui::ShowDemoWindow(&show_pcan_window);
+
+        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+        {
+
+            ImGui::Begin("PCAN USB");                          // Create a window called "Hello, world!" and append into it.TPCANMsg CANMsg;
+            TPCANMsg CANMsg;
+            TPCANTimestamp CANTimeStamp;
+
+            // We execute the "Read" function of the PCANBasic   
+            printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
+            printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
+            printf("\n~~~~~~~~~~~~~~~~~~~~\n");
+            ImGui::Text("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
+            ImGui::Text("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
+            TPCANStatus stsResult = CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp);
+            if (stsResult != PCAN_ERROR_QRCVEMPTY)
+            {
+                switch (CANMsg.ID)
+                {
+                case SENSOR_MM7_C_TELEGRAM_1_ID:
+                {
+                    uint16_t yawRate;
+                    uint16_t acceleration;
+                    uint8_t temperature;
+                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &yawRate, SENSOR_MM7_TX1_YAW_RATE);
+                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX1_AY);
+                    ExtractUint8FromCanTelegram(CANMsg.DATA, 8, &temperature, SENSOR_MM7_TX1_TEMP_RATE_Z);
+
+                    MM7_C_YAW_RATE = GetAngularRateFromMM7Raw(yawRate);
+                    MM7_C_AY = GetAccelerationFromMM7Raw(acceleration);
+                    MM7_C_TEMP = GetTemperatureFromMM7Raw(temperature);
+                    break;
+                }
+                case SENSOR_MM7_C_TELEGRAM_2_ID:
+                {
+                    uint16_t rollRate;
+                    uint16_t acceleration;
+                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &rollRate, SENSOR_MM7_TX2_ROLL_RATE);
+                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX2_AX);
+
+                    MM7_C_ROLL_RATE = GetAngularRateFromMM7Raw(rollRate);
+                    MM7_C_AX = GetAccelerationFromMM7Raw(acceleration);
+                    break;
+                }
+                case SENSOR_MM7_C_TELEGRAM_3_ID:
+                {
+
+                    uint16_t pitchRate;
+                    uint16_t acceleration;
+                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &pitchRate, SENSOR_MM7_TX3_PITCH_RATE);
+                    ExtractUint16FromCanTelegram(CANMsg.DATA, 8, &acceleration, SENSOR_MM7_TX3_AZ);
+                    MM7_C_PITCH_RATE = GetAngularRateFromMM7Raw(pitchRate);
+                    MM7_C_AZ = GetAccelerationFromMM7Raw(acceleration);
+                    break;
+                }
+                default:
+                {
+                    break;
+                }
+                }
+            }
+            ImGui::End();
+        }
+
+
+
+
+
+
+
+
 
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
         if (show_demo_window)
@@ -260,4 +403,148 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+
+
+/**
+ * @brief Returns angular rate in degrees/s, LSB = 0.005 deg/s
+ *
+ * @param[in] input raw value from MM7 sensor (YAW_RATE, ROLL_RATE, PITCH_RATE)
+ * @return angular rate in deg/s
+ */
+float GetAngularRateFromMM7Raw(uint16_t input)
+{
+    if (input == 0xFFFF)
+    {
+        return -999.9F; // Sensor will never send 0xFFFF except in error state, output an equally outrageous value
+    }
+    float output = (input - 0x8000) * 0.005;
+    return output;
+}
+
+/**
+ * @brief Returns acceleration in m/s^2, LSB = 0.00125 m/s^2
+ *
+ * @param[in] input raw value from MM7 sensor (AX, AY, AZ)
+ * @return Acceleration in m/s^2
+ */
+float GetAccelerationFromMM7Raw(uint16_t input)
+{
+    if (input == 0xFFFF)
+    {
+        return -999.9F; // Sensor will never send 0xFFFF except in error state, output an equally outrageous value
+    }
+    float output = (input - 0x8000) * 0.00125;
+    return output;
+}
+
+/**
+ * @brief Returns temperature of MM7 sensor value in degrees Celsius
+ *
+ * @param[in] input raw value from MM7 sensor (TEMP_RATE_Z)
+ * @return temperature in degrees Celsius
+ */
+int16_t GetTemperatureFromMM7Raw(uint8_t input)
+{
+    if (input == 0xFF)
+    {
+        return -999; // 0xFF means CRC-error or temperature is below -50C
+    }
+    if (input == 0xC9)
+    {
+        return 999; // 0xC9 means temperature is above 150C
+    }
+    int16_t output = input - 50;
+    return output;
+}
+
+/**
+ * @brief Extracts a value of type bool at a given location and length from an array of uint8's, returns success
+ *
+ * @param[in] telegram[] array of bytes from CAN Telegram
+ * @param[in] sizeOfTelegram size of array (number of elements)
+ * @param[inout] output* extracted value
+ * @param[in] spnConfig struct of type SPN_Config, location and length of requested value in array
+ * @return success status of block.
+ */
+int ExtractBoolFromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, bool* output, SPN_Config spnConfig)
+{
+    if ((8 * spnConfig.byte + spnConfig.bit + spnConfig.len) > (sizeOfTelegram * 8)) // Check if we are asking for something outside of telegram's allocation
+        return -1;	// Return -1 if we overrun the array?
+
+    int mask = 0;
+    int i = 0;
+    for (i; i < spnConfig.len; i++)
+    {
+        mask |= (1 << i);
+    }
+    int val = (telegram[spnConfig.byte] >> spnConfig.bit) & mask;
+    if (val)
+        *output = TRUE;
+    else
+        *output = FALSE;
+    return 0;
+}
+
+/**
+ * @brief Extracts a value of type uint16 at a given location and length from an array of uint8's, returns success
+ *
+ * @param[in] telegram[] array of bytes from CAN Telegram
+ * @param[in] sizeOfTelegram size of array (number of elements)
+ * @param[inout] output* extracted value
+ * @param[in] spnConfig struct of type SPN_Config, location and length of requested value in array
+ * @return success status of block.
+ */
+int ExtractUint16FromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, uint16_t* output, SPN_Config spnConfig)
+{
+    if ((8 * spnConfig.byte + spnConfig.bit + spnConfig.len) > (sizeOfTelegram * 8)) // Check if we are asking for something outside of telegram's allocation
+        return -1;	// Return -1 if we overrun the array?
+
+    int mask = 0;
+    int i = 0;
+    for (i; i < spnConfig.len; i++)
+    {
+        mask |= (1 << i);
+    }
+    int val = 0;
+    uint8_t numBytes = 1 + (spnConfig.bit + spnConfig.len) / 8;
+    i = 0;
+    for (i; i < numBytes; i++)
+    {
+        val |= telegram[spnConfig.byte + i] << (8 * i);
+    }
+    *output = (val >> spnConfig.bit) & mask;
+    return 0;
+}
+
+/**
+ * @brief Extracts a value of type uint8 at a given location and length from an array of uint8's, returns success
+ *
+ * @param[in] telegram[] array of bytes from CAN Telegram
+ * @param[in] sizeOfTelegram size of array (number of elements)
+ * @param[inout] output* extracted value
+ * @param[in] spnConfig struct of type SPN_Config, location and length of requested value in array
+ * @return success status of block.
+ */
+int ExtractUint8FromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, uint8_t* output, SPN_Config spnConfig)
+{
+    if ((8 * spnConfig.byte + spnConfig.bit + spnConfig.len) > (sizeOfTelegram * 8)) // Check if we are asking for something outside of telegram's allocation
+        return -1;	// Return -1 if we overrun the array?
+
+    int mask = 0;
+    int i = 0;
+    for (i; i < spnConfig.len; i++)
+    {
+        mask |= (1 << i);
+    }
+    int val = 0;
+    uint8_t numBytes = 1 + (spnConfig.bit + spnConfig.len) / 8;
+    i = 0;
+    for (i; i < numBytes; i++)
+    {
+        val |= telegram[spnConfig.byte + i] << (8 * i);
+    }
+    *output = (val >> spnConfig.bit) & mask;
+    return 0;
 }
