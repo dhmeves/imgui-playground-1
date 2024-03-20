@@ -163,9 +163,9 @@ int main(int, char**)
         TPCANTimestamp CANTimeStamp;
 
         // We execute the "Read" function of the PCANBasic   
-        printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
-        printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
-        printf("\n~~~~~~~~~~~~~~~~~~~~\n");
+        //printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
+        //printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
+        //printf("\n~~~~~~~~~~~~~~~~~~~~\n");
         TPCANStatus stsResult = CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp);
         if (stsResult != PCAN_ERROR_QRCVEMPTY)
         {
