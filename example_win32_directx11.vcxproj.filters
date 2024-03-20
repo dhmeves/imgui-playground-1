@@ -93,6 +93,9 @@
     <ClInclude Include="imguizmo\ImGuizmo.h">
       <Filter>Header Files\imguizmo</Filter>
     </ClInclude>
+    <ClInclude Include="fsc_mahony.h">
+      <Filter>Header Files\fsc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -133,6 +136,9 @@
     </ClCompile>
     <ClCompile Include="imguizmo\ImGuizmo.cpp">
       <Filter>Source Files\imguizmo</Filter>
+    </ClCompile>
+    <ClCompile Include="fsc_mahony.cpp">
+      <Filter>Source Files\fsc</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

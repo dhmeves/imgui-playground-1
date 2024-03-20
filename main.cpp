@@ -67,6 +67,9 @@ void Cross(const float* a, const float* b, float* r);
 #include <math.h>
 #define PI 3.14159265
 
+#include "fsc_mahony.h"
+fsc_mahony imu;
+
 ManualRead CAN;
 
 const TPCANHandle PcanHandle1 = PCAN_USBBUS1;
@@ -310,6 +313,7 @@ int main(int, char**)
                 break;
             }
             }
+            imu.updateIMU(MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .01);
         }
         // END - GRAB CAN DATA
 
@@ -374,17 +378,21 @@ int main(int, char**)
                 ImGui::InputFloat3("Sc", matrixScale);
                 ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, objectMatrix[matId]);
                 // end - disregard this stuff?
+                //imu.updateIMU(MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, 0.01); // this is done when we get data
 
+                float yaw = imu.getYaw();
+                float roll = imu.getRoll();
+                float pitch = imu.getPitch();
 
-                float yaw = CalculateYawEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
-                float roll = CalculateRollEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
-                float pitch = CalculatePitchEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
+                //float yaw = CalculateYawEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
+                //float roll = CalculateRollEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
+                //float pitch = CalculatePitchEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
 
                 ImGui::Text("yaw: %f", yaw);
                 ImGui::Text("roll: %f", roll);
                 ImGui::Text("pitch: %f", pitch);
                 matrixRotation[0] = roll;
-                //matrixRotation[1] = yaw; // yaw doesn't work right now cause we aren't combining everything :)
+                matrixRotation[1] = yaw; // yaw doesn't work right now cause we aren't combining everything :)
                 matrixRotation[2] = pitch;
 
                 ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, objectMatrix[matId]);
