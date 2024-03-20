@@ -37,6 +37,12 @@
     <Filter Include="Source Files\fsc">
       <UniqueIdentifier>{87501984-c22c-4607-81ef-649d1dc273ba}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\imguizmo">
+      <UniqueIdentifier>{f64a6ede-d7da-4b88-9356-521f3810571f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\imguizmo">
+      <UniqueIdentifier>{5a343728-5878-487e-b092-8e0ab7457d3c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -84,6 +90,9 @@
     <ClInclude Include="fsc\TimersAndCalculations.h">
       <Filter>Header Files\fsc</Filter>
     </ClInclude>
+    <ClInclude Include="imguizmo\ImGuizmo.h">
+      <Filter>Header Files\imguizmo</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -121,6 +130,9 @@
     </ClCompile>
     <ClCompile Include="fsc\TimersAndCalculations.cpp">
       <Filter>Source Files\fsc</Filter>
+    </ClCompile>
+    <ClCompile Include="imguizmo\ImGuizmo.cpp">
+      <Filter>Source Files\imguizmo</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
