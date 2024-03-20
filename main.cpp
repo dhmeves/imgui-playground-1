@@ -120,25 +120,28 @@ int ExtractBoolFromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, bool*
 int ExtractUint16FromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, uint16_t* output, SPN_Config spnConfig);
 int ExtractUint8FromCanTelegram(uint8_t telegram[], uint8_t sizeOfTelegram, uint8_t* output, SPN_Config spnConfig);
 
-float CalculateYawEuler(float x, float y, float z)
+
+float CalculateRollEuler(float x, float y, float z)
 {
     float miu = 0.001;
     int sign = 1;
     if (z < 0)
         sign = -1;
     float yaw = (180.0 / PI) * atan2(-y, sign * sqrt(z * z + miu * x * x));
-    //if (z < 0)
-    //{
-    //    yaw = -yaw;
-    //    if (yaw > 0)
-    //        yaw = 180 - yaw;
-    //    else
-    //        yaw = -180 - yaw;
-    //}
+    {
+        //if (z < 0)
+        //{
+        //    yaw = -yaw;
+        //    if (yaw > 0)
+        //        yaw = 180 - yaw;
+        //    else
+        //        yaw = -180 - yaw;
+        //}
+    }
     return yaw;
 }
 
-float CalculateRollEuler(float x, float y, float z)
+float CalculateYawEuler(float x, float y, float z)
 {
     float miu = 0.001;
     int sign = 1;
@@ -153,14 +156,16 @@ float CalculatePitchEuler(float x, float y, float z)
     //int sign = 1;
     //if (x < 0)
     //    sign = -1;
-    float pitch =  -(180.0 / PI) * atan2(x, sqrt(y * y + z * z));
-    //if (z < 0)
-    //{
-    //    if (pitch > 0)
-    //        pitch = 180 - pitch;
-    //    else
-    //        pitch = -180 - pitch;
-    //}
+    float pitch = -(180.0 / PI) * atan2(x, sqrt(y * y + z * z));
+    {
+        //if (z < 0)
+        //{
+        //    if (pitch > 0)
+        //        pitch = 180 - pitch;
+        //    else
+        //        pitch = -180 - pitch;
+        //}
+    }
     return pitch;
 }
 
@@ -378,8 +383,8 @@ int main(int, char**)
                 ImGui::Text("yaw: %f", yaw);
                 ImGui::Text("roll: %f", roll);
                 ImGui::Text("pitch: %f", pitch);
-                matrixRotation[0] = yaw;
-                //matrixRotation[1] = roll;
+                matrixRotation[0] = roll;
+                //matrixRotation[1] = yaw; // yaw doesn't work right now cause we aren't combining everything :)
                 matrixRotation[2] = pitch;
 
                 ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, objectMatrix[matId]);
