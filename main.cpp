@@ -67,8 +67,16 @@ void Cross(const float* a, const float* b, float* r);
 #include <math.h>
 #define PI 3.14159265
 
+
+#define FSC_MADGWICK
+
+#if defined(FSC_MAHONY)
 #include "fsc_mahony.h"
 fsc_mahony imu;
+#elif defined(FSC_MADGWICK)
+#include "fsc_madgwick.h"
+fsc_madgwick imu;
+#endif
 
 ManualRead CAN;
 
@@ -313,7 +321,7 @@ int main(int, char**)
                 break;
             }
             }
-            imu.updateIMU(MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .01);
+            imu.updateIMU(MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .0033); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
         }
         // END - GRAB CAN DATA
 
