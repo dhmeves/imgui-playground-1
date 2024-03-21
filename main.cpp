@@ -68,6 +68,7 @@ void Cross(const float* a, const float* b, float* r);
 #define PI 3.14159265
 
 
+//#define FSC_MAHONY
 #define FSC_MADGWICK
 
 #if defined(FSC_MAHONY)
@@ -321,7 +322,8 @@ int main(int, char**)
                 break;
             }
             }
-            imu.updateIMU(MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .0033); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
+            imu.updateIMU(-MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .0033); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
+            //imu.updateIMU(0,0,0, MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
         }
         // END - GRAB CAN DATA
 
@@ -370,7 +372,7 @@ int main(int, char**)
             // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
             {
                 ImGui::Begin("PCAN USB");                          // Create a window called "Hello, world!" and append into it.TPCANMsg CANMsg;
-                ImGui::Text("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
+                ImGui::Text("YAW RATE: %3.f\tPITCH RATE: %3.f\tROLL RATE: %3.f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
                 ImGui::Text("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
 
 
