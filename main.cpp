@@ -68,8 +68,8 @@ void Cross(const float* a, const float* b, float* r);
 #define PI 3.14159265
 
 
-//#define FSC_MAHONY
-#define FSC_MADGWICK
+//#define FSC_MAHONY // Pick what algo you want for IMU algorithm
+#define FSC_MADGWICK // Pick what algo you want for IMU algorithm
 
 #if defined(FSC_MAHONY)
 #include "fsc_mahony.h"
@@ -86,9 +86,17 @@ const TPCANHandle PcanHandle1 = PCAN_USBBUS1;
 //TPCANTimestamp CANTimeStamp;
 
 
-#define SENSOR_MM7_C_TELEGRAM_1_ID 0x374
-#define SENSOR_MM7_C_TELEGRAM_2_ID 0x378
-#define SENSOR_MM7_C_TELEGRAM_3_ID 0x37C
+//#define SENSOR_MM7_C_TELEGRAM_1_ID 0x374 // ACTUAL SENSOR C
+//#define SENSOR_MM7_C_TELEGRAM_2_ID 0x378
+//#define SENSOR_MM7_C_TELEGRAM_3_ID 0x37C
+
+//#define SENSOR_MM7_C_TELEGRAM_1_ID 0x174 // JUST FOR TESTING - TODO - RM: REMOVE WHEN FINISHED TESTING
+//#define SENSOR_MM7_C_TELEGRAM_2_ID 0x178
+//#define SENSOR_MM7_C_TELEGRAM_3_ID 0x17C
+
+#define SENSOR_MM7_C_TELEGRAM_1_ID 0x274 // JUST FOR TESTING - TODO - RM: REMOVE WHEN FINISHED TESTING
+#define SENSOR_MM7_C_TELEGRAM_2_ID 0x278
+#define SENSOR_MM7_C_TELEGRAM_3_ID 0x27C
 
 typedef struct // Same as Codesys SPN configuration, location of byte, bit inside that byte, and how long the value is
 {
@@ -266,8 +274,9 @@ int main(int, char**)
     bool done = false;
     while (!done)
     {
-
-
+        const uint32_t NUM_RATES = 1000;
+        static float rollRates[NUM_RATES], rollRateAvg, rollRateMin, rollRateMax, pitchRates[NUM_RATES], pitchRateAvg, pitchRateMin, pitchRateMax, yawRates[NUM_RATES], yawRateAvg, yawRateMin, yawRateMax;
+        
         // START - GRAB CAN DATA
         TPCANMsg CANMsg;
         TPCANTimestamp CANTimeStamp;
@@ -323,6 +332,44 @@ int main(int, char**)
             }
             }
             imu.updateIMU(-MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .0033); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
+
+            static uint32_t counter = 0;
+            rollRates[counter] = MM7_C_ROLL_RATE;
+            pitchRates[counter] = MM7_C_PITCH_RATE;
+            yawRates[counter] = MM7_C_YAW_RATE;
+
+            double rollRatesSum = 0, pitchRatesSum = 0, yawRatesSum = 0;
+            for (int i = 0; i < NUM_RATES; i++)
+            {
+                rollRatesSum += rollRates[i];
+                pitchRatesSum += pitchRates[i];
+                yawRatesSum += yawRates[i];
+            }
+            rollRateAvg = rollRatesSum / NUM_RATES;
+            pitchRateAvg = pitchRatesSum / NUM_RATES;
+            yawRateAvg = yawRatesSum / NUM_RATES;
+
+            counter++;
+            if (counter > NUM_RATES - 1)
+            {
+                counter = 0;
+            }
+
+
+
+            if (MM7_C_ROLL_RATE < rollRateMin)
+                rollRateMin = MM7_C_ROLL_RATE;
+            if (MM7_C_ROLL_RATE > rollRateMax)
+                rollRateMax = MM7_C_ROLL_RATE;
+            if (MM7_C_PITCH_RATE < pitchRateMin)
+                pitchRateMin = MM7_C_PITCH_RATE;
+            if (MM7_C_PITCH_RATE > pitchRateMax)
+                pitchRateMax = MM7_C_PITCH_RATE;
+            if (MM7_C_YAW_RATE < yawRateMin)
+                yawRateMin = MM7_C_YAW_RATE;
+            if (MM7_C_YAW_RATE > yawRateMax)
+                yawRateMax = MM7_C_YAW_RATE;
+
             //imu.updateIMU(0,0,0, MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
         }
         // END - GRAB CAN DATA
@@ -372,10 +419,37 @@ int main(int, char**)
             // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
             {
                 ImGui::Begin("PCAN USB");                          // Create a window called "Hello, world!" and append into it.TPCANMsg CANMsg;
+
+
+                ImGui::PlotLines("rollRates", rollRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
+                ImGui::PlotLines("yawRates", yawRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
+                ImGui::PlotLines("pitchRates", pitchRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
+
                 ImGui::Text("YAW RATE: %3.f\tPITCH RATE: %3.f\tROLL RATE: %3.f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
-                ImGui::Text("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
+                ImGui::Text("AX:\t%f\tAT:\t%f\tAZ:\t%f\t\n", MM7_C_AX, MM7_C_AY, MM7_C_AZ);
+                float gravX, gravY, gravZ;
+                imu.getGravityVector(&gravX, &gravY, &gravZ);
+                ImGui::Text("gX:\t%f\tgY:\t%f\tgZ:\t%f\t\n", gravX, gravY, gravZ);
+                float q0, q1, q2, q3;
+                imu.getQuaternion(&q0, &q1, &q2, &q3);
+                ImGui::Text("q0: %f\tq1: %f\tq3: %f\tq4: %f\t\n", q0, q1, q2, q3);
+                //static float rollRateMin, rollRateMax, pitchRateMin, pitchRateMax, yawRateMin, yawRateMax;
 
+                ImGui::Text("rollRateMaxDiff: %f\n", rollRateMax - rollRateMin);
+                ImGui::Text("pitchRateMaxDiff: %f\n", pitchRateMax - pitchRateMin);
+                ImGui::Text("yawRateMaxDiff: %f\n", yawRateMax - yawRateMin);
 
+                ImGui::Text("rollRateMin: %f\n", rollRateMin);
+                ImGui::Text("pitchRateMin: %f\n", pitchRateMin);
+                ImGui::Text("yawRateMin: %f\n", yawRateMin);
+
+                ImGui::Text("rollRateMax: %f\n", rollRateMax);
+                ImGui::Text("pitchRateMax: %f\n", pitchRateMax);
+                ImGui::Text("yawRateMax: %f\n", yawRateMax);
+
+                ImGui::Text("rollRateAvg: %f\n", rollRateAvg);
+                ImGui::Text("pitchRateAvg: %f\n", pitchRateAvg);
+                ImGui::Text("yawRateAvg: %f\n", yawRateAvg);
                 // START - 3D DISPLAY
 
                 int matId = 0;

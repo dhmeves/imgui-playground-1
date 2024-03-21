@@ -26,6 +26,19 @@ public:
             computeAngles();
         return yaw * 57.29578f + 180.0f;
     }
+    void getQuaternion(float* w, float* x, float* y, float* z) {
+        *w = q0;
+        *x = q1;
+        *y = q2;
+        *z = q3;
+    }
+    void getGravityVector(float* x, float* y, float* z) {
+        if (!anglesComputed)
+            computeAngles();
+        *x = grav[0];
+        *y = grav[1];
+        *z = grav[2];
+    }
 private:
     float beta; // algorithm gain
     float q0;
