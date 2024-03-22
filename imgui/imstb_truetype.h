@@ -4403,11 +4403,11 @@ STBTT_DEF void stbtt_GetPackedQuad(const stbtt_packedchar *chardata, int pw, int
 #define STBTT_min(a,b)  ((a) < (b) ? (a) : (b))
 #define STBTT_max(a,b)  ((a) < (b) ? (b) : (a))
 
-static int stbtt__ray_intersect_bezier(float orig[2], float ray[2], float qW[2], float qX[2], float qY[2], float hits[2][2])
+static int stbtt__ray_intersect_bezier(float orig[2], float ray[2], float q0[2], float q1[2], float q2[2], float hits[2][2])
 {
-   float q0perp = qW[1]*ray[0] - qW[0]*ray[1];
-   float q1perp = qX[1]*ray[0] - qX[0]*ray[1];
-   float q2perp = qY[1]*ray[0] - qY[0]*ray[1];
+   float q0perp = q0[1]*ray[0] - q0[0]*ray[1];
+   float q1perp = q1[1]*ray[0] - q1[0]*ray[1];
+   float q2perp = q2[1]*ray[0] - q2[0]*ray[1];
    float roperp = orig[1]*ray[0] - orig[0]*ray[1];
 
    float a = q0perp - 2*q1perp + q2perp;
@@ -4445,9 +4445,9 @@ static int stbtt__ray_intersect_bezier(float orig[2], float ray[2], float qW[2],
       float rcp_len2 = 1 / (ray[0]*ray[0] + ray[1]*ray[1]);
       float rayn_x = ray[0] * rcp_len2, rayn_y = ray[1] * rcp_len2;
 
-      float q0d =   qW[0]*rayn_x +   qW[1]*rayn_y;
-      float q1d =   qX[0]*rayn_x +   qX[1]*rayn_y;
-      float q2d =   qY[0]*rayn_x +   qY[1]*rayn_y;
+      float q0d =   q0[0]*rayn_x +   q0[1]*rayn_y;
+      float q1d =   q1[0]*rayn_x +   q1[1]*rayn_y;
+      float q2d =   q2[0]*rayn_x +   q2[1]*rayn_y;
       float rod = orig[0]*rayn_x + orig[1]*rayn_y;
 
       float q10d = q1d - q0d;
@@ -4507,15 +4507,15 @@ static int stbtt__compute_crossings_x(float x, float y, int nverts, stbtt_vertex
          int ax = STBTT_min(x0,STBTT_min(x1,x2)), ay = STBTT_min(y0,STBTT_min(y1,y2));
          int by = STBTT_max(y0,STBTT_max(y1,y2));
          if (y > ay && y < by && x > ax) {
-            float qW[2],qX[2],qY[2];
+            float q0[2],q1[2],q2[2];
             float hits[2][2];
-            qW[0] = (float)x0;
-            qW[1] = (float)y0;
-            qX[0] = (float)x1;
-            qX[1] = (float)y1;
-            qY[0] = (float)x2;
-            qY[1] = (float)y2;
-            if (equal(qW,qX) || equal(qX,qY)) {
+            q0[0] = (float)x0;
+            q0[1] = (float)y0;
+            q1[0] = (float)x1;
+            q1[1] = (float)y1;
+            q2[0] = (float)x2;
+            q2[1] = (float)y2;
+            if (equal(q0,q1) || equal(q1,q2)) {
                x0 = (int)verts[i-1].x;
                y0 = (int)verts[i-1].y;
                x1 = (int)verts[i  ].x;
@@ -4526,7 +4526,7 @@ static int stbtt__compute_crossings_x(float x, float y, int nverts, stbtt_vertex
                      winding += (y0 < y1) ? 1 : -1;
                }
             } else {
-               int num_hits = stbtt__ray_intersect_bezier(orig, ray, qW, qX, qY, hits);
+               int num_hits = stbtt__ray_intersect_bezier(orig, ray, q0, q1, q2, hits);
                if (num_hits >= 1)
                   if (hits[0][0] < 0)
                      winding += (hits[0][1] < 0 ? -1 : 1);
