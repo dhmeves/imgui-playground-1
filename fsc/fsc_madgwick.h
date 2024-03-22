@@ -27,10 +27,10 @@ public:
         return yaw * 57.29578f + 180.0f;
     }
     void getQuaternion(float* w, float* x, float* y, float* z) {
-        *w = q0;
-        *x = q1;
-        *y = q2;
-        *z = q3;
+        *w = qW;
+        *x = qX;
+        *y = qY;
+        *z = qZ;
     }
     void getGravityVector(float* x, float* y, float* z) {
         if (!anglesComputed)
@@ -41,10 +41,10 @@ public:
     }
 private:
     float beta; // algorithm gain
-    float q0;
-    float q1;
-    float q2;
-    float q3; // quaternion of sensor frame relative to auxiliary frame
+    float qW;
+    float qX;
+    float qY;
+    float qZ; // quaternion of sensor frame relative to auxiliary frame
     float invSampleFreq;
     float roll, pitch, yaw;
     float grav[3];

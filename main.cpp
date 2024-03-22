@@ -86,17 +86,17 @@ const TPCANHandle PcanHandle1 = PCAN_USBBUS1;
 //TPCANTimestamp CANTimeStamp;
 
 
-//#define SENSOR_MM7_C_TELEGRAM_1_ID 0x374 // ACTUAL SENSOR C
-//#define SENSOR_MM7_C_TELEGRAM_2_ID 0x378
-//#define SENSOR_MM7_C_TELEGRAM_3_ID 0x37C
+#define SENSOR_MM7_C_TELEGRAM_1_ID 0x374 // ACTUAL SENSOR C
+#define SENSOR_MM7_C_TELEGRAM_2_ID 0x378
+#define SENSOR_MM7_C_TELEGRAM_3_ID 0x37C
 
 //#define SENSOR_MM7_C_TELEGRAM_1_ID 0x174 // JUST FOR TESTING - TODO - RM: REMOVE WHEN FINISHED TESTING
 //#define SENSOR_MM7_C_TELEGRAM_2_ID 0x178
 //#define SENSOR_MM7_C_TELEGRAM_3_ID 0x17C
 
-#define SENSOR_MM7_C_TELEGRAM_1_ID 0x274 // JUST FOR TESTING - TODO - RM: REMOVE WHEN FINISHED TESTING
-#define SENSOR_MM7_C_TELEGRAM_2_ID 0x278
-#define SENSOR_MM7_C_TELEGRAM_3_ID 0x27C
+//#define SENSOR_MM7_C_TELEGRAM_1_ID 0x274 // JUST FOR TESTING - TODO - RM: REMOVE WHEN FINISHED TESTING
+//#define SENSOR_MM7_C_TELEGRAM_2_ID 0x278
+//#define SENSOR_MM7_C_TELEGRAM_3_ID 0x27C
 
 typedef struct // Same as Codesys SPN configuration, location of byte, bit inside that byte, and how long the value is
 {
@@ -430,9 +430,9 @@ int main(int, char**)
                 float gravX, gravY, gravZ;
                 imu.getGravityVector(&gravX, &gravY, &gravZ);
                 ImGui::Text("gX:\t%f\tgY:\t%f\tgZ:\t%f\t\n", gravX, gravY, gravZ);
-                float q0, q1, q2, q3;
-                imu.getQuaternion(&q0, &q1, &q2, &q3);
-                ImGui::Text("q0: %f\tq1: %f\tq3: %f\tq4: %f\t\n", q0, q1, q2, q3);
+                float qW, qX, qY, qZ;
+                imu.getQuaternion(&qW, &qX, &qY, &qZ);
+                ImGui::Text("q0: %f\tq1: %f\tq3: %f\tq4: %f\t\n", qW, qX, qY, qZ);
                 //static float rollRateMin, rollRateMax, pitchRateMin, pitchRateMax, yawRateMin, yawRateMax;
 
                 ImGui::Text("rollRateMaxDiff: %f\n", rollRateMax - rollRateMin);

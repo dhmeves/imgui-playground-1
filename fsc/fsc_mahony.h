@@ -25,10 +25,10 @@ public:
         return yaw * 57.29578f + 180.0f;
     }
     void getQuaternion(float* w, float* x, float* y, float* z) {
-        *w = q0;
-        *x = q1;
-        *y = q2;
-        *z = q3;
+        *w = qW;
+        *x = qX;
+        *y = qY;
+        *z = qZ;
     }
     void getGravityVector(float* x, float* y, float* z) {
         if (!anglesComputed)
@@ -40,8 +40,8 @@ public:
 private:
     float twoKp; // 2 * proportional gain (Kp)
     float twoKi; // 2 * integral gain (Ki)
-    float q0, q1, q2,
-        q3; // quaternion of sensor frame relative to auxiliary frame
+    float qW, qX, qY,
+        qZ; // quaternion of sensor frame relative to auxiliary frame
     float integralFBx, integralFBy,
         integralFBz; // integral error terms scaled by Ki
     float invSampleFreq;

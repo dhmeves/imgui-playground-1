@@ -9,10 +9,10 @@ fsc_mahony::fsc_mahony() : fsc_mahony(twoKpDef, twoKiDef) {}
 fsc_mahony::fsc_mahony(float prop_gain, float int_gain) {
     twoKp = prop_gain; // 2 * proportional gain (Kp)
     twoKi = int_gain;  // 2 * integral gain (Ki)
-    q0 = 1.0f;
-    q1 = 0.0f;
-    q2 = 0.0f;
-    q3 = 0.0f;
+    qW = 1.0f;
+    qX = 0.0f;
+    qY = 0.0f;
+    qZ = 0.0f;
     integralFBx = 0.0f;
     integralFBy = 0.0f;
     integralFBz = 0.0f;
@@ -43,9 +43,9 @@ void fsc_mahony::updateIMU(float gx, float gy, float gz, float ax,
         az *= recipNorm;
 
         // Estimated direction of gravity
-        halfvx = q1 * q3 - q0 * q2;
-        halfvy = q0 * q1 + q2 * q3;
-        halfvz = q0 * q0 - 0.5f + q3 * q3;
+        halfvx = qX * qZ - qW * qY;
+        halfvy = qW * qX + qY * qZ;
+        halfvz = qW * qW - 0.5f + qZ * qZ;
 
         // Error is sum of cross product between estimated
         // and measured direction of gravity
@@ -79,20 +79,20 @@ void fsc_mahony::updateIMU(float gx, float gy, float gz, float ax,
     gx *= (0.5f * dt); // pre-multiply common factors
     gy *= (0.5f * dt);
     gz *= (0.5f * dt);
-    qa = q0;
-    qb = q1;
-    qc = q2;
-    q0 += (-qb * gx - qc * gy - q3 * gz);
-    q1 += (qa * gx + qc * gz - q3 * gy);
-    q2 += (qa * gy - qb * gz + q3 * gx);
-    q3 += (qa * gz + qb * gy - qc * gx);
+    qa = qW;
+    qb = qX;
+    qc = qY;
+    qW += (-qb * gx - qc * gy - qZ * gz);
+    qX += (qa * gx + qc * gz - qZ * gy);
+    qY += (qa * gy - qb * gz + qZ * gx);
+    qZ += (qa * gz + qb * gy - qc * gx);
 
     // Normalise quaternion
-    recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
-    q0 *= recipNorm;
-    q1 *= recipNorm;
-    q2 *= recipNorm;
-    q3 *= recipNorm;
+    recipNorm = invSqrt(qW * qW + qX * qX + qY * qY + qZ * qZ);
+    qW *= recipNorm;
+    qX *= recipNorm;
+    qY *= recipNorm;
+    qZ *= recipNorm;
     anglesComputed = 0;
 }
 
@@ -113,11 +113,11 @@ float fsc_mahony::invSqrt(float x) {
 
 
 void fsc_mahony::computeAngles() {
-    roll = atan2f(q0 * q1 + q2 * q3, 0.5f - q1 * q1 - q2 * q2);
-    pitch = asinf(-2.0f * (q1 * q3 - q0 * q2));
-    yaw = atan2f(q1 * q2 + q0 * q3, 0.5f - q2 * q2 - q3 * q3);
-    grav[0] = 2.0f * (q1 * q3 - q0 * q2);
-    grav[1] = 2.0f * (q0 * q1 + q2 * q3);
-    grav[2] = 2.0f * (q1 * q0 - 0.5f + q3 * q3);
+    roll = atan2f(qW * qX + qY * qZ, 0.5f - qX * qX - qY * qY);
+    pitch = asinf(-2.0f * (qX * qZ - qW * qY));
+    yaw = atan2f(qX * qY + qW * qZ, 0.5f - qY * qY - qZ * qZ);
+    grav[0] = 2.0f * (qX * qZ - qW * qY);
+    grav[1] = 2.0f * (qW * qX + qY * qZ);
+    grav[2] = 2.0f * (qX * qW - 0.5f + qZ * qZ);
     anglesComputed = 1;
 }
