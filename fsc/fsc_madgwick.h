@@ -32,6 +32,12 @@ public:
         *y = qY;
         *z = qZ;
     }
+    void setQuaternion(float w, float x, float y, float z) {
+        qW = w;
+        qX = x;
+        qY = y;
+        qZ = z;
+    }
     void getGravityVector(float* x, float* y, float* z) {
         if (!anglesComputed)
             computeAngles();

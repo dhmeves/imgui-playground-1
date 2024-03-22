@@ -2,7 +2,7 @@
 
 
 #define sampleFreqDef 100.0f // sample frequency in Hz
-#define betaDef 0.2f         // 2 * proportional gain ORIGINAL VALUE: 0.1
+#define betaDef 0.1f         // 2 * proportional gain ORIGINAL VALUE: 0.2
 
 //-------------------------------------------------------------------------------------------
 // AHRS algorithm update
@@ -27,8 +27,8 @@ void fsc_madgwick::updateIMU(float gx, float gy, float gz, float ax,
     float recipNorm;
     float s0, s1, s2, s3;
     float qDot1, qDot2, qDot3, qDot4;
-    float _2q0, _2q1, _2q2, _2q3, _4q0, _4q1, _4q2, _8q1, _8q2, q0q0, q1q1, q2q2,
-        q3q3;
+    float _2qW, _2qX, _2qY, _2qZ, _4qW, _4qX, _4qY, _8qX, _8qY, qWqW, qXqX, qYqY,
+        qZqZ;
 
     // Convert gyroscope degrees/sec to radians/sec
     gx *= 0.0174533f;
@@ -52,27 +52,27 @@ void fsc_madgwick::updateIMU(float gx, float gy, float gz, float ax,
         az *= recipNorm;
 
         // Auxiliary variables to avoid repeated arithmetic
-        _2q0 = 2.0f * qW;
-        _2q1 = 2.0f * qX;
-        _2q2 = 2.0f * qY;
-        _2q3 = 2.0f * qZ;
-        _4q0 = 4.0f * qW;
-        _4q1 = 4.0f * qX;
-        _4q2 = 4.0f * qY;
-        _8q1 = 8.0f * qX;
-        _8q2 = 8.0f * qY;
-        q0q0 = qW * qW;
-        q1q1 = qX * qX;
-        q2q2 = qY * qY;
-        q3q3 = qZ * qZ;
+        _2qW = 2.0f * qW;
+        _2qX = 2.0f * qX;
+        _2qY = 2.0f * qY;
+        _2qZ = 2.0f * qZ;
+        _4qW = 4.0f * qW;
+        _4qX = 4.0f * qX;
+        _4qY = 4.0f * qY;
+        _8qX = 8.0f * qX;
+        _8qY = 8.0f * qY;
+        qWqW = qW * qW;
+        qXqX = qX * qX;
+        qYqY = qY * qY;
+        qZqZ = qZ * qZ;
 
         // Gradient decent algorithm corrective step
-        s0 = _4q0 * q2q2 + _2q2 * ax + _4q0 * q1q1 - _2q1 * ay;
-        s1 = _4q1 * q3q3 - _2q3 * ax + 4.0f * q0q0 * qX - _2q0 * ay - _4q1 +
-            _8q1 * q1q1 + _8q1 * q2q2 + _4q1 * az;
-        s2 = 4.0f * q0q0 * qY + _2q0 * ax + _4q2 * q3q3 - _2q3 * ay - _4q2 +
-            _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az;
-        s3 = 4.0f * q1q1 * qZ - _2q1 * ax + 4.0f * q2q2 * qZ - _2q2 * ay;
+        s0 = _4qW * qYqY + _2qY * ax + _4qW * qXqX - _2qX * ay;
+        s1 = _4qX * qZqZ - _2qZ * ax + 4.0f * qWqW * qX - _2qW * ay - _4qX +
+            _8qX * qXqX + _8qX * qYqY + _4qX * az;
+        s2 = 4.0f * qWqW * qY + _2qW * ax + _4qY * qZqZ - _2qZ * ay - _4qY +
+            _8qY * qXqX + _8qY * qYqY + _4qY * az;
+        s3 = 4.0f * qXqX * qZ - _2qX * ax + 4.0f * qYqY * qZ - _2qY * ay;
         recipNorm = invSqrt(s0 * s0 + s1 * s1 + s2 * s2 +
             s3 * s3); // normalise step magnitude
         s0 *= recipNorm;

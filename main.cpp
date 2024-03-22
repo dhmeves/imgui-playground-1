@@ -50,6 +50,7 @@ static const float identityMatrix[16] =
     0.f, 0.f, 1.f, 0.f,
     0.f, 0.f, 0.f, 1.f };
 
+
 void EditTransform(float* cameraView, float* cameraProjection, float* matrix, bool editTransformDecomposition);
 void Perspective(float fovyInDegrees, float aspectRatio, float znear, float zfar, float* m16);
 void Frustum(float left, float right, float bottom, float top, float znear, float zfar, float* m16);
@@ -80,6 +81,122 @@ fsc_madgwick imu;
 #endif
 
 ManualRead CAN;
+
+
+
+
+struct Quaternion
+{
+    float w;
+    float x;
+    float y;
+    float z;
+};
+
+Quaternion AverageQuaternion(struct Quaternion* cumulative, Quaternion newRotation, Quaternion firstRotation, int addAmount);
+Quaternion NormalizeQuaternion(Quaternion q);
+Quaternion InverseSignQuaternion(Quaternion q);
+bool AreQuaternionsClose(Quaternion q1, Quaternion q2);
+float qDot(Quaternion q1, Quaternion q2);
+
+
+//Get an average (mean) from more than two quaternions (with two, slerp would be used).
+//Note: this only works if all the quaternions are relatively close together.
+//Usage:
+//-Cumulative is an external Vector4 which holds all the added x y z and w components.
+//-newRotation is the next rotation to be added to the average pool
+//-firstRotation is the first quaternion of the array to be averaged
+//-addAmount holds the total amount of quaternions which are currently added
+//This function returns the current average quaternion
+Quaternion AverageQuaternion(Quaternion cumulative[], Quaternion newRotation, Quaternion firstRotation, int addAmount)
+{
+
+    //float w = 0.0f;
+    //float x = 0.0f;
+    //float y = 0.0f;
+    //float z = 0.0f;
+    Quaternion avg = { 0, 0, 0, 0};
+
+    for (int i = 0; i < 10; i++)
+    {
+        avg.w += cumulative[i].w;
+        avg.x += cumulative[i].x;
+        avg.y += cumulative[i].y;
+        avg.z += cumulative[i].z;
+    }
+
+    avg.w *= (1.0 / 10);
+    avg.x *= (1.0 / 10);
+    avg.y *= (1.0 / 10);
+    avg.z *= (1.0 / 10);
+
+    //Before we add the new rotation to the average (mean), we have to check whether the quaternion has to be inverted. Because
+    //q and -q are the same rotation, but cannot be averaged, we have to make sure they are all the same.
+    //if (!AreQuaternionsClose(newRotation, firstRotation)) {
+
+    //    newRotation = InverseSignQuaternion(newRotation);
+    //}
+    //Quaternion q;
+    //Average the values
+    //float addDet = 1.0f / (float)addAmount;
+    //cumulative.w += newRotation.w;
+    //q.w = cumulative.w * addDet;
+    //cumulative.x += newRotation.x;
+    //q.x = cumulative.x * addDet;
+    //cumulative.y += newRotation.y;
+    //q.y = cumulative.y * addDet;
+    //cumulative.z += newRotation.z;
+    //q.z = cumulative.z * addDet;
+
+    //note: if speed is an issue, you can skip the normalization step
+    NormalizeQuaternion(avg);
+    return avg;// NormalizeQuaternion(x, y, z, w);
+}
+
+Quaternion NormalizeQuaternion(Quaternion q)
+{
+    Quaternion newQ = q;
+    float lengthD = imu.invSqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+    newQ.w *= lengthD;
+    newQ.x *= lengthD;
+    newQ.y *= lengthD;
+    newQ.z *= lengthD;
+
+    return newQ;
+}
+
+//Changes the sign of the quaternion components. This is not the same as the inverse.
+Quaternion InverseSignQuaternion(Quaternion q)
+{
+    Quaternion inverse = { -q.x, -q.y, -q.z, -q.w };
+    return inverse;
+}
+
+//Returns true if the two input quaternions are close to each other. This can
+//be used to check whether or not one of two quaternions which are supposed to
+//be very similar but has its component signs reversed (q has the same rotation as
+//-q)
+bool AreQuaternionsClose(Quaternion q1, Quaternion q2)
+{
+    float dot = qDot(q1, q2);
+
+    if (dot < 0.0f)
+        return false;
+    else
+        return true;
+}
+
+float qDot(Quaternion q1, Quaternion q2)
+{
+    float dot = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
+    return acos(dot);
+}
+
+
+
+
+
+
 
 const TPCANHandle PcanHandle1 = PCAN_USBBUS1;
 //TPCANMsg CANMsg;
@@ -188,6 +305,8 @@ float CalculatePitchEuler(float x, float y, float z)
     }
     return pitch;
 }
+
+
 
 float MM7_C_YAW_RATE;
 float MM7_C_ROLL_RATE;
@@ -419,7 +538,28 @@ int main(int, char**)
             // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
             {
                 ImGui::Begin("PCAN USB");                          // Create a window called "Hello, world!" and append into it.TPCANMsg CANMsg;
+                const int NUM_QUAT = 10;
+                static bool firstLoop = true;
+                static int quatCounter = 0;
+                static Quaternion cumulative[NUM_QUAT];
+                static Quaternion firstQuaternion;
+                Quaternion currQuaternion;
+                Quaternion averageQuaternion = { 0,0,0,0 };
 
+                imu.getQuaternion(&currQuaternion.w, &currQuaternion.x, &currQuaternion.y, &currQuaternion.z);
+
+                if (firstLoop)
+                {
+                    firstLoop = false;
+                    firstQuaternion = currQuaternion;
+                }
+                else
+                {
+                    averageQuaternion = AverageQuaternion(cumulative, currQuaternion, firstQuaternion, quatCounter);
+                }
+                quatCounter++;
+
+                imu.setQuaternion(currQuaternion.w, currQuaternion.x, currQuaternion.y, currQuaternion.z);
 
                 ImGui::PlotLines("rollRates", rollRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
                 ImGui::PlotLines("yawRates", yawRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
@@ -433,6 +573,7 @@ int main(int, char**)
                 float qW, qX, qY, qZ;
                 imu.getQuaternion(&qW, &qX, &qY, &qZ);
                 ImGui::Text("q0: %f\tq1: %f\tq3: %f\tq4: %f\t\n", qW, qX, qY, qZ);
+                ImGui::Text("cq0: %f\tcq1: %f\tcq3: %f\tcq4: %f\t\n", averageQuaternion.w, averageQuaternion.x, averageQuaternion.y, averageQuaternion.z);
                 //static float rollRateMin, rollRateMax, pitchRateMin, pitchRateMax, yawRateMin, yawRateMax;
 
                 ImGui::Text("rollRateMaxDiff: %f\n", rollRateMax - rollRateMin);
