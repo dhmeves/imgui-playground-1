@@ -41,6 +41,7 @@ static const uint16_t CRCTABLE[256] = {
   0x8201, 0x42c0, 0x4380, 0x8341, 0x4100, 0x81c1, 0x8081, 0x4040
 };
 
+float fsc_atan2f(float y, float x);
 long long epoch();
 long long epochMillis();
 uint64_t hours();

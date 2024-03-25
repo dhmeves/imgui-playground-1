@@ -3,6 +3,34 @@
 //uint64_t PROGRAM_START = 0;
 auto startTime = std::chrono::steady_clock::now(); //steady clock is great for timers, not great for epoch
 
+
+# define PI 3.14159265358979323846
+
+float fsc_atan2f(float y, float x)
+{
+    // http://pubs.opengroup.org/onlinepubs/009695399/functions/atan2.html
+    // https://dspguru.com/dsp/tricks/fixed-point-atan2-with-self-normalization/
+    const float ONEQTR_PI = PI / 4.0;
+    const float THRQTR_PI = 3.0 * PI / 4.0;
+    float r, angle;
+    float abs_y = fabs(y) + 1e-10f; // kludge to prevent 0/0 condition
+    if (x < 0.0f)
+    {
+        r = (x + abs_y) / (abs_y - x);
+        angle = THRQTR_PI;
+    }
+    else
+    {
+        r = (x - abs_y) / (x + abs_y);
+        angle = ONEQTR_PI;
+    }
+    angle += (0.1963f * r * r - 0.9817f) * r;
+    if (y < 0.0f)
+        return (-angle); // negate if in quad III or IV
+    else
+        return (angle);
+}
+
 long long epoch()
 {
 	long long milliseconds_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();

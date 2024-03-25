@@ -2,6 +2,7 @@
 
 //#include "Adafruit_AHRS_FusionInterface.h"
 #include <math.h>
+#include <TimersAndCalculations.h>
 
 class fsc_madgwick // old mahony
 {

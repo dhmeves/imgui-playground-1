@@ -121,9 +121,9 @@ float fsc_madgwick::invSqrt(float x) {
 //-------------------------------------------------------------------------------------------
 // TODO - RM: ORIGINAL FUNCTION - BRING BACK WHEN YOU'RE DONE SCREWING AROUND
 void fsc_madgwick::computeAngles() {
-    roll = atan2f(qW * qX + qY * qZ, 0.5f - qX * qX - qY * qY);
+    roll = fsc_atan2f(qW * qX + qY * qZ, 0.5f - qX * qX - qY * qY);
     pitch = asinf(-2.0f * (qX * qZ - qW * qY));
-    yaw = atan2f(qX * qY + qW * qZ, 0.5f - qY * qY - qZ * qZ);
+    yaw = fsc_atan2f(qX * qY + qW * qZ, 0.5f - qY * qY - qZ * qZ);
     grav[0] = 2.0f * (qX * qZ - qW * qY);
     grav[1] = 2.0f * (qW * qX + qY * qZ);
     grav[2] = 2.0f * (qX * qW - 0.5f + qZ * qZ);
