@@ -83,15 +83,7 @@ fsc_madgwick imu;
 ManualRead CAN;
 
 
-
-
-struct Quaternion
-{
-    float w;
-    float x;
-    float y;
-    float z;
-};
+Quaternion imuC = { 1.0f, 0.0f, 0.0f, 0.0f };
 
 Quaternion AverageQuaternion(struct Quaternion* cumulative, Quaternion newRotation, Quaternion firstRotation, int addAmount);
 Quaternion NormalizeQuaternion(Quaternion q);
@@ -450,7 +442,7 @@ int main(int, char**)
                 break;
             }
             }
-            imu.updateIMU(-MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .0033); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
+            imu.updateIMU(&imuC, -MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .0033); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
 
             static uint32_t counter = 0;
             rollRates[counter] = MM7_C_ROLL_RATE;
@@ -546,7 +538,7 @@ int main(int, char**)
                 Quaternion currQuaternion;
                 Quaternion averageQuaternion = { 0,0,0,0 };
 
-                imu.getQuaternion(&currQuaternion.w, &currQuaternion.x, &currQuaternion.y, &currQuaternion.z);
+                imu.getQuaternion(imuC, &currQuaternion.w, &currQuaternion.x, &currQuaternion.y, &currQuaternion.z);
 
                 if (firstLoop)
                 {
@@ -559,7 +551,7 @@ int main(int, char**)
                 }
                 quatCounter++;
 
-                imu.setQuaternion(currQuaternion.w, currQuaternion.x, currQuaternion.y, currQuaternion.z);
+                imu.setQuaternion(&imuC, currQuaternion.w, currQuaternion.x, currQuaternion.y, currQuaternion.z);
 
                 ImGui::PlotLines("rollRates", rollRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
                 ImGui::PlotLines("yawRates", yawRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
@@ -571,7 +563,7 @@ int main(int, char**)
                 imu.getGravityVector(&gravX, &gravY, &gravZ);
                 ImGui::Text("gX:\t%f\tgY:\t%f\tgZ:\t%f\t\n", gravX, gravY, gravZ);
                 float qW, qX, qY, qZ;
-                imu.getQuaternion(&qW, &qX, &qY, &qZ);
+                imu.getQuaternion(imuC, &qW, &qX, &qY, &qZ);
                 ImGui::Text("q0: %f\tq1: %f\tq3: %f\tq4: %f\t\n", qW, qX, qY, qZ);
                 ImGui::Text("cq0: %f\tcq1: %f\tcq3: %f\tcq4: %f\t\n", averageQuaternion.w, averageQuaternion.x, averageQuaternion.y, averageQuaternion.z);
                 //static float rollRateMin, rollRateMax, pitchRateMin, pitchRateMax, yawRateMin, yawRateMax;
@@ -604,10 +596,12 @@ int main(int, char**)
                 ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, objectMatrix[matId]);
                 // end - disregard this stuff?
                 //imu.updateIMU(MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, 0.01); // this is done when we get data
+                float yaw;// = imu.getYaw();
+                float roll;// = imu.getRoll();
+                float pitch;// = imu.getPitch();
+                float grav[3];// = imu.getPitch();
 
-                float yaw = imu.getYaw();
-                float roll = imu.getRoll();
-                float pitch = imu.getPitch();
+                imu.computeIMUAngles(imuC, &roll, &pitch, &yaw);// , grav);
 
                 //float yaw = CalculateYawEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
                 //float roll = CalculateRollEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);

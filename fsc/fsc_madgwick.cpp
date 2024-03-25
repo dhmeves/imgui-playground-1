@@ -11,10 +11,10 @@ fsc_madgwick::fsc_madgwick() : fsc_madgwick(betaDef) {}
 
 fsc_madgwick::fsc_madgwick(float gain) {
     beta = gain;
-    qW = 1.0f;
-    qX = 0.0f;
-    qY = 0.0f;
-    qZ = 0.0f;
+    //q->w = 1.0f;
+    //q->x = 0.0f;
+    //q->y = 0.0f;
+    //q->z = 0.0f;
     invSampleFreq = 1.0f / sampleFreqDef;
     anglesComputed = false;
 }
@@ -22,8 +22,8 @@ fsc_madgwick::fsc_madgwick(float gain) {
 //-------------------------------------------------------------------------------------------
 // IMU algorithm update
 
-void fsc_madgwick::updateIMU(float gx, float gy, float gz, float ax,
-    float ay, float az, float dt) {
+void fsc_madgwick::updateIMU(Quaternion* q, float gx, float gy, float gz, float ax, float ay, float az, float dt)
+{
     float recipNorm;
     float s0, s1, s2, s3;
     float qDot1, qDot2, qDot3, qDot4;
@@ -36,10 +36,10 @@ void fsc_madgwick::updateIMU(float gx, float gy, float gz, float ax,
     gz *= 0.0174533f;
 
     // Rate of change of quaternion from gyroscope
-    qDot1 = 0.5f * (-qX * gx - qY * gy - qZ * gz);
-    qDot2 = 0.5f * (qW * gx + qY * gz - qZ * gy);
-    qDot3 = 0.5f * (qW * gy - qX * gz + qZ * gx);
-    qDot4 = 0.5f * (qW * gz + qX * gy - qY * gx);
+    qDot1 = 0.5f * (-q->x * gx - q->y * gy - q->z * gz);
+    qDot2 = 0.5f * (q->w * gx + q->y * gz - q->z * gy);
+    qDot3 = 0.5f * (q->w * gy - q->x * gz + q->z * gx);
+    qDot4 = 0.5f * (q->w * gz + q->x * gy - q->y * gx);
 
     // Compute feedback only if accelerometer measurement valid (avoids NaN in
     // accelerometer normalisation)
@@ -52,27 +52,27 @@ void fsc_madgwick::updateIMU(float gx, float gy, float gz, float ax,
         az *= recipNorm;
 
         // Auxiliary variables to avoid repeated arithmetic
-        _2qW = 2.0f * qW;
-        _2qX = 2.0f * qX;
-        _2qY = 2.0f * qY;
-        _2qZ = 2.0f * qZ;
-        _4qW = 4.0f * qW;
-        _4qX = 4.0f * qX;
-        _4qY = 4.0f * qY;
-        _8qX = 8.0f * qX;
-        _8qY = 8.0f * qY;
-        qWqW = qW * qW;
-        qXqX = qX * qX;
-        qYqY = qY * qY;
-        qZqZ = qZ * qZ;
+        _2qW = 2.0f * q->w;
+        _2qX = 2.0f * q->x;
+        _2qY = 2.0f * q->y;
+        _2qZ = 2.0f * q->z;
+        _4qW = 4.0f * q->w;
+        _4qX = 4.0f * q->x;
+        _4qY = 4.0f * q->y;
+        _8qX = 8.0f * q->x;
+        _8qY = 8.0f * q->y;
+        qWqW = q->w * q->w;
+        qXqX = q->x * q->x;
+        qYqY = q->y * q->y;
+        qZqZ = q->z * q->z;
 
         // Gradient decent algorithm corrective step
         s0 = _4qW * qYqY + _2qY * ax + _4qW * qXqX - _2qX * ay;
-        s1 = _4qX * qZqZ - _2qZ * ax + 4.0f * qWqW * qX - _2qW * ay - _4qX +
+        s1 = _4qX * qZqZ - _2qZ * ax + 4.0f * qWqW * q->x - _2qW * ay - _4qX +
             _8qX * qXqX + _8qX * qYqY + _4qX * az;
-        s2 = 4.0f * qWqW * qY + _2qW * ax + _4qY * qZqZ - _2qZ * ay - _4qY +
+        s2 = 4.0f * qWqW * q->y + _2qW * ax + _4qY * qZqZ - _2qZ * ay - _4qY +
             _8qY * qXqX + _8qY * qYqY + _4qY * az;
-        s3 = 4.0f * qXqX * qZ - _2qX * ax + 4.0f * qYqY * qZ - _2qY * ay;
+        s3 = 4.0f * qXqX * q->z - _2qX * ax + 4.0f * qYqY * q->z - _2qY * ay;
         recipNorm = invSqrt(s0 * s0 + s1 * s1 + s2 * s2 +
             s3 * s3); // normalise step magnitude
         s0 *= recipNorm;
@@ -88,17 +88,17 @@ void fsc_madgwick::updateIMU(float gx, float gy, float gz, float ax,
     }
 
     // Integrate rate of change of quaternion to yield quaternion
-    qW += qDot1 * dt;
-    qX += qDot2 * dt;
-    qY += qDot3 * dt;
-    qZ += qDot4 * dt;
+    q->w += qDot1 * dt;
+    q->x += qDot2 * dt;
+    q->y += qDot3 * dt;
+    q->z += qDot4 * dt;
 
     // Normalise quaternion
-    recipNorm = invSqrt(qW * qW + qX * qX + qY * qY + qZ * qZ);
-    qW *= recipNorm;
-    qX *= recipNorm;
-    qY *= recipNorm;
-    qZ *= recipNorm;
+    recipNorm = invSqrt(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
+    q->w *= recipNorm;
+    q->x *= recipNorm;
+    q->y *= recipNorm;
+    q->z *= recipNorm;
     anglesComputed = 0;
 }
 
@@ -120,13 +120,26 @@ float fsc_madgwick::invSqrt(float x) {
 
 //-------------------------------------------------------------------------------------------
 // TODO - RM: ORIGINAL FUNCTION - BRING BACK WHEN YOU'RE DONE SCREWING AROUND
-void fsc_madgwick::computeAngles() {
-    roll = fsc_atan2f(qW * qX + qY * qZ, 0.5f - qX * qX - qY * qY);
-    pitch = asinf(-2.0f * (qX * qZ - qW * qY));
-    yaw = fsc_atan2f(qX * qY + qW * qZ, 0.5f - qY * qY - qZ * qZ);
-    grav[0] = 2.0f * (qX * qZ - qW * qY);
-    grav[1] = 2.0f * (qW * qX + qY * qZ);
-    grav[2] = 2.0f * (qX * qW - 0.5f + qZ * qZ);
+//void fsc_madgwick::computeAngles() {
+//    roll = fsc_atan2f(qW * qX + qY * qZ, 0.5f - qX * qX - qY * qY);
+//    pitch = asinf(-2.0f * (qX * qZ - qW * qY));
+//    yaw = fsc_atan2f(qX * qY + qW * qZ, 0.5f - qY * qY - qZ * qZ);
+//    grav[0] = 2.0f * (qX * qZ - qW * qY);
+//    grav[1] = 2.0f * (qW * qX + qY * qZ);
+//    grav[2] = 2.0f * (qX * qW - 0.5f + qZ * qZ);
+//    anglesComputed = 1;
+//}
+
+void fsc_madgwick::computeIMUAngles(Quaternion q, float* roll, float* pitch, float* yaw)//, float* grav[])
+{
+    *roll = RAD_TO_DEG * fsc_atan2f(q.w * q.x + q.y * q.z, 0.5f - q.x * q.x - q.y * q.y);
+
+    *pitch = RAD_TO_DEG * asinf(-2.0f * (q.x * q.z - q.w * q.y));
+    //*pitch = RAD_TO_DEG * fsc_asinf((-2.0f * (q.x * q.z - q.w * q.y)));
+    *yaw = RAD_TO_DEG * fsc_atan2f(q.x * q.y + q.w * q.z, 0.5f - q.y * q.y - q.z * q.z);
+    //*grav[0] = 2.0f * (q.x * q.z - q.w * q.y);
+    //*grav[1] = 2.0f * (q.w * q.x + q.y * q.z);
+    //*grav[2] = 2.0f * (q.x * q.w - 0.5f + q.z * q.z);
     anglesComputed = 1;
 }
 

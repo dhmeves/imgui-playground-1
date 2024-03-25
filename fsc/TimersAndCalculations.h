@@ -6,6 +6,11 @@
 #include <random>
 #include <chrono> //h utilized for the timer since millis() doesn't exist in this realm
 
+
+# define PI 3.14159265358979323846
+#define PI_2 1.57079632679489661923
+#define RAD_TO_DEG 57.295779513
+
 static const uint16_t CRCTABLE[256] = {
   0x0000, 0xc0c1, 0xc181, 0x0140, 0xc301, 0x03c0, 0x0280, 0xc241,
   0xc601, 0x06c0, 0x0780, 0xc741, 0x0500, 0xc5c1, 0xc481, 0x0440,
@@ -41,6 +46,7 @@ static const uint16_t CRCTABLE[256] = {
   0x8201, 0x42c0, 0x4380, 0x8341, 0x4100, 0x81c1, 0x8081, 0x4040
 };
 
+float fsc_asinf(float x);
 float fsc_atan2f(float y, float x);
 long long epoch();
 long long epochMillis();
