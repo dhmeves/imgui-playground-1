@@ -19,8 +19,8 @@ public:
     fsc_madgwick(float gain);
     //void updateIMU(float gx, float gy, float gz, float ax, float ay, float az, float dt);
     void updateIMU(Quaternion* q, float gx, float gy, float gz, float ax, float ay, float az, float dt);
-    static float invSqrt(float x);
-    void computeIMUAngles(Quaternion q, float* roll, float* pitch, float* yaw);//, float* grav[]);
+    //static float invSqrt(float x);
+    void computeIMUAngles(Quaternion q, float* roll, float* pitch, float* yaw, Quaternion* grav);
     //void computeAngles();
     float getRoll() {
         if (!anglesComputed)

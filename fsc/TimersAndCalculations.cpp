@@ -4,13 +4,37 @@
 auto startTime = std::chrono::steady_clock::now(); //steady clock is great for timers, not great for epoch
 
 
+float fsc_fabs(float f)
+{
+    if (f < 0)
+        return -f;
+    return f;
+}
 
+float invSqrt(float x)
+{
+    float halfx = 0.5f * x;
+    union
+    {
+        float f;
+        long i;
+    } conv = { x };
+    conv.i = 0x5f3759df - (conv.i >> 1);
+    conv.f *= 1.5f - (halfx * conv.f * conv.f);
+    conv.f *= 1.5f - (halfx * conv.f * conv.f);
+    return conv.f;
+}
+
+float fsc_sqrt(float x)
+{
+    return (1.0f / invSqrt(x)); // This is probably the fastest way to approximate this...
+}
 
 float fsc_asinf(float x)
 {
     // https://developer.download.nvidia.com/cg/asin.html
     float negate = (x < 0) ? -1.0f : 1.0f;
-    x = abs(x);
+    x = fsc_fabs(x);
     float ret = -0.0187293;
     ret *= x;
     ret += 0.0742610;
@@ -18,7 +42,7 @@ float fsc_asinf(float x)
     ret -= 0.2121144;
     ret *= x;
     ret += 1.5707288;
-    ret = PI_2 - sqrt(1.0 - x) * ret;
+    ret = PI_2 - fsc_sqrt(1.0 - x) * ret;
     return ret * negate;
 }
 
@@ -29,7 +53,7 @@ float fsc_atan2f(float y, float x)
     const float ONEQTR_PI = PI / 4.0;
     const float THRQTR_PI = 3.0 * PI / 4.0;
     float r, angle;
-    float abs_y = fabs(y) + 1e-10f; // kludge to prevent 0/0 condition
+    float abs_y = fsc_fabs(y) + 1e-10f; // kludge to prevent 0/0 condition
     if (x < 0.0f)
     {
         r = (x + abs_y) / (abs_y - x);

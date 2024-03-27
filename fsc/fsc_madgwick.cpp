@@ -105,18 +105,18 @@ void fsc_madgwick::updateIMU(Quaternion* q, float gx, float gy, float gz, float 
 //-------------------------------------------------------------------------------------------
 // Fast inverse square-root
 // See: http://en.wikipedia.org/wiki/Fast_inverse_square_root
-
-float fsc_madgwick::invSqrt(float x) {
-    float halfx = 0.5f * x;
-    union {
-        float f;
-        long i;
-    } conv = { x };
-    conv.i = 0x5f3759df - (conv.i >> 1);
-    conv.f *= 1.5f - (halfx * conv.f * conv.f);
-    conv.f *= 1.5f - (halfx * conv.f * conv.f);
-    return conv.f;
-}
+//
+//float fsc_madgwick::invSqrt(float x) {
+//    float halfx = 0.5f * x;
+//    union {
+//        float f;
+//        long i;
+//    } conv = { x };
+//    conv.i = 0x5f3759df - (conv.i >> 1);
+//    conv.f *= 1.5f - (halfx * conv.f * conv.f);
+//    conv.f *= 1.5f - (halfx * conv.f * conv.f);
+//    return conv.f;
+//}
 
 //-------------------------------------------------------------------------------------------
 // TODO - RM: ORIGINAL FUNCTION - BRING BACK WHEN YOU'RE DONE SCREWING AROUND
@@ -130,11 +130,17 @@ float fsc_madgwick::invSqrt(float x) {
 //    anglesComputed = 1;
 //}
 
-void fsc_madgwick::computeIMUAngles(Quaternion q, float* roll, float* pitch, float* yaw)//, float* grav[])
+void fsc_madgwick::computeIMUAngles(Quaternion q, float* roll, float* pitch, float* yaw, Quaternion* grav)
 {
     *roll = RAD_TO_DEG * fsc_atan2f(q.w * q.x + q.y * q.z, 0.5f - q.x * q.x - q.y * q.y);
 
-    *pitch = RAD_TO_DEG * asinf(-2.0f * (q.x * q.z - q.w * q.y));
+    *pitch = RAD_TO_DEG * fsc_asinf(-2.0f * (q.x * q.z - q.w * q.y));
+    grav->x = 2.0f * (q.x * q.z - q.w * q.y);
+    grav->y = 2.0f * (q.w * q.x + q.y * q.z);
+    grav->z = 2.0f * (q.x * q.w - 0.5f + q.z * q.z);
+    if (q.z < 0)
+    {
+    }
     //*pitch = RAD_TO_DEG * fsc_asinf((-2.0f * (q.x * q.z - q.w * q.y)));
     *yaw = RAD_TO_DEG * fsc_atan2f(q.x * q.y + q.w * q.z, 0.5f - q.y * q.y - q.z * q.z);
     //*grav[0] = 2.0f * (q.x * q.z - q.w * q.y);

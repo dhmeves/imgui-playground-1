@@ -66,7 +66,7 @@ void Cross(const float* a, const float* b, float* r);
 #include "03_ManualRead.h"
 
 #include <math.h>
-#define PI 3.14159265
+//#define PI 3.14159265
 
 
 //#define FSC_MAHONY // Pick what algo you want for IMU algorithm
@@ -148,7 +148,7 @@ Quaternion AverageQuaternion(Quaternion cumulative[], Quaternion newRotation, Qu
 Quaternion NormalizeQuaternion(Quaternion q)
 {
     Quaternion newQ = q;
-    float lengthD = imu.invSqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+    float lengthD = invSqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
     newQ.w *= lengthD;
     newQ.x *= lengthD;
     newQ.y *= lengthD;
@@ -564,8 +564,8 @@ int main(int, char**)
                 ImGui::Text("gX:\t%f\tgY:\t%f\tgZ:\t%f\t\n", gravX, gravY, gravZ);
                 float qW, qX, qY, qZ;
                 imu.getQuaternion(imuC, &qW, &qX, &qY, &qZ);
-                ImGui::Text("q0: %f\tq1: %f\tq3: %f\tq4: %f\t\n", qW, qX, qY, qZ);
-                ImGui::Text("cq0: %f\tcq1: %f\tcq3: %f\tcq4: %f\t\n", averageQuaternion.w, averageQuaternion.x, averageQuaternion.y, averageQuaternion.z);
+                ImGui::Text("qW: %f\tqX: %f\tqY: %f\tqZ: %f\t\n", qW, qX, qY, qZ);
+                ImGui::Text("cqW: %f\tcqX: %f\tcqY: %f\tcqZ: %f\t\n", averageQuaternion.w, averageQuaternion.x, averageQuaternion.y, averageQuaternion.z);
                 //static float rollRateMin, rollRateMax, pitchRateMin, pitchRateMax, yawRateMin, yawRateMax;
 
                 ImGui::Text("rollRateMaxDiff: %f\n", rollRateMax - rollRateMin);
@@ -599,17 +599,27 @@ int main(int, char**)
                 float yaw;// = imu.getYaw();
                 float roll;// = imu.getRoll();
                 float pitch;// = imu.getPitch();
-                float grav[3];// = imu.getPitch();
+                Quaternion grav;// = imu.getPitch();
 
-                imu.computeIMUAngles(imuC, &roll, &pitch, &yaw);// , grav);
+                imu.computeIMUAngles(imuC, &roll, &pitch, &yaw, &grav);
+
+                if (MM7_C_AZ < 0)
+                {
+                    if (pitch < 0)
+                        pitch = -180 - pitch;
+                    else
+                        pitch = 180 - pitch;
+                }
 
                 //float yaw = CalculateYawEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
                 //float roll = CalculateRollEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
                 //float pitch = CalculatePitchEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
 
-                ImGui::Text("yaw: %f", yaw);
-                ImGui::Text("roll: %f", roll);
-                ImGui::Text("pitch: %f", pitch);
+                ImGui::Text("gX:\t%f\tgY:\t%f\tgZ:\t%f\t\n", grav.x, grav.y, grav.z);
+
+                ImGui::Text("YAW: %f", yaw);
+                ImGui::Text("ROLL: %f", roll);
+                ImGui::Text("PITCH: %f", pitch);
                 matrixRotation[0] = roll;
                 matrixRotation[1] = yaw; // yaw doesn't work right now cause we aren't combining everything :)
                 matrixRotation[2] = pitch;
