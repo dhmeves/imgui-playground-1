@@ -560,7 +560,7 @@ int main(int, char**)
                 {
                     quatCounter = 0;
                 }
-                imuC = averageQuaternion;
+                //imuC = averageQuaternion;
                 imu.setQuaternion(&imuC, currQuaternion.w, currQuaternion.x, currQuaternion.y, currQuaternion.z);
 
                 ImGui::PlotLines("rollRates", rollRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
@@ -613,13 +613,13 @@ int main(int, char**)
 
                 imu.computeIMUAngles(imuC, &roll, &pitch, &yaw, &grav);
 
-                if (MM7_C_AZ < 0)
-                {
-                    if (pitch < 0)
-                        pitch = -180 - pitch;
-                    else
-                        pitch = 180 - pitch;
-                }
+                //if (MM7_C_AZ < 0)
+                //{
+                //    if (pitch < 0)
+                //        pitch = -180 - pitch;
+                //    else
+                //        pitch = 180 - pitch;
+                //}
 
                 //float yaw = CalculateYawEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
                 //float roll = CalculateRollEuler(MM7_C_AX, MM7_C_AY, MM7_C_AZ);
