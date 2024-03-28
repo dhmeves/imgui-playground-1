@@ -102,15 +102,18 @@ float qDot(Quaternion q1, Quaternion q2);
 //This function returns the current average quaternion
 Quaternion AverageQuaternion(Quaternion cumulative[], Quaternion newRotation, Quaternion firstRotation, int addAmount)
 {
-
     //float w = 0.0f;
     //float x = 0.0f;
     //float y = 0.0f;
     //float z = 0.0f;
     Quaternion avg = { 0, 0, 0, 0};
 
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < addAmount; i++)
     {
+        if (!AreQuaternionsClose(cumulative[i], cumulative[0])) {
+
+            cumulative[i] = InverseSignQuaternion(cumulative[i]);
+        }
         avg.w += cumulative[i].w;
         avg.x += cumulative[i].x;
         avg.y += cumulative[i].y;
@@ -122,9 +125,12 @@ Quaternion AverageQuaternion(Quaternion cumulative[], Quaternion newRotation, Qu
     avg.y *= (1.0 / 10);
     avg.z *= (1.0 / 10);
 
+
+    NormalizeQuaternion(avg);
+
     //Before we add the new rotation to the average (mean), we have to check whether the quaternion has to be inverted. Because
     //q and -q are the same rotation, but cannot be averaged, we have to make sure they are all the same.
-    //if (!AreQuaternionsClose(newRotation, firstRotation)) {
+    //if (!AreQuaternionsClose(newRotation, cumulative[0])) {
 
     //    newRotation = InverseSignQuaternion(newRotation);
     //}
@@ -141,7 +147,7 @@ Quaternion AverageQuaternion(Quaternion cumulative[], Quaternion newRotation, Qu
     //q.z = cumulative.z * addDet;
 
     //note: if speed is an issue, you can skip the normalization step
-    NormalizeQuaternion(avg);
+    //NormalizeQuaternion(avg);
     return avg;// NormalizeQuaternion(x, y, z, w);
 }
 
@@ -539,18 +545,22 @@ int main(int, char**)
                 Quaternion averageQuaternion = { 0,0,0,0 };
 
                 imu.getQuaternion(imuC, &currQuaternion.w, &currQuaternion.x, &currQuaternion.y, &currQuaternion.z);
-
+                cumulative[quatCounter] = imuC;
                 if (firstLoop)
                 {
                     firstLoop = false;
-                    firstQuaternion = currQuaternion;
+                    firstQuaternion = imuC;// currQuaternion;
                 }
                 else
                 {
-                    averageQuaternion = AverageQuaternion(cumulative, currQuaternion, firstQuaternion, quatCounter);
+                    averageQuaternion = AverageQuaternion(cumulative, imuC/*currQuaternion*/, firstQuaternion, NUM_QUAT);
                 }
                 quatCounter++;
-
+                if (quatCounter >= NUM_QUAT)
+                {
+                    quatCounter = 0;
+                }
+                imuC = averageQuaternion;
                 imu.setQuaternion(&imuC, currQuaternion.w, currQuaternion.x, currQuaternion.y, currQuaternion.z);
 
                 ImGui::PlotLines("rollRates", rollRates, IM_ARRAYSIZE(rollRates), 0, 0, -170.0f, 170.0f, ImVec2(0, 50.0f));
