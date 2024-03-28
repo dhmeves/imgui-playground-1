@@ -106,7 +106,7 @@ Quaternion AverageQuaternion(Quaternion cumulative[], Quaternion newRotation, Qu
     //float x = 0.0f;
     //float y = 0.0f;
     //float z = 0.0f;
-    Quaternion avg = { 0, 0, 0, 0};
+    Quaternion avg = { 0, 0, 0, 0 };
 
     for (int i = 0; i < addAmount; i++)
     {
@@ -393,7 +393,7 @@ int main(int, char**)
     {
         const uint32_t NUM_RATES = 1000;
         static float rollRates[NUM_RATES], rollRateAvg, rollRateMin, rollRateMax, pitchRates[NUM_RATES], pitchRateAvg, pitchRateMin, pitchRateMax, yawRates[NUM_RATES], yawRateAvg, yawRateMin, yawRateMax;
-        
+
         // START - GRAB CAN DATA
         TPCANMsg CANMsg;
         TPCANTimestamp CANTimeStamp;

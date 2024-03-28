@@ -66,10 +66,10 @@ double ConvertToFahrenheit(double celsius);
 class TimersAndCalculations
 {
 public:
-	uint16_t BuildCrc16(const char* input, long input_len);
-	uint16_t BuildCrc16(char input[], uint8_t input_len);
-	uint8_t BuildCrc8(char input[], uint8_t input_len);
-	uint32_t TimeUntilTimer(uint32_t& startTime, uint32_t timeout, bool resetPrevTime, uint32_t current_time = 0, bool useFakeMillis = 0);
+    uint16_t BuildCrc16(const char* input, long input_len);
+    uint16_t BuildCrc16(char input[], uint8_t input_len);
+    uint8_t BuildCrc8(char input[], uint8_t input_len);
+    uint32_t TimeUntilTimer(uint32_t& startTime, uint32_t timeout, bool resetPrevTime, uint32_t current_time = 0, bool useFakeMillis = 0);
 
 private:
 };

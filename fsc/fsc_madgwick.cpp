@@ -9,7 +9,8 @@
 
 fsc_madgwick::fsc_madgwick() : fsc_madgwick(betaDef) {}
 
-fsc_madgwick::fsc_madgwick(float gain) {
+fsc_madgwick::fsc_madgwick(float gain)
+{
     beta = gain;
     //q->w = 1.0f;
     //q->x = 0.0f;
