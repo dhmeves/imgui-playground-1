@@ -631,7 +631,7 @@ int main(int, char**)
                 ImGui::Text("ROLL: %f", roll);
                 ImGui::Text("PITCH: %f", pitch);
                 matrixRotation[0] = roll;
-                matrixRotation[1] = yaw; // yaw doesn't work right now cause we aren't combining everything :)
+                matrixRotation[1] = yaw;
                 matrixRotation[2] = pitch;
 
                 ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, objectMatrix[matId]);
