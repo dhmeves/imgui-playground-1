@@ -12,6 +12,7 @@
 #include "imgui_impl_dx11.h"
 #include <d3d11.h>
 #include <tchar.h>
+#include <math.h>
 
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
@@ -80,7 +81,7 @@ fsc_mahony imu;
 fsc_madgwick imu;
 #endif
 
-ManualRead CAN;
+//ManualRead CAN;
 
 
 Quaternion imuC = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -402,7 +403,7 @@ int main(int, char**)
         //printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
         //printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
         //printf("\n~~~~~~~~~~~~~~~~~~~~\n");
-        TPCANStatus stsResult = CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp);
+        TPCANStatus stsResult = PCAN_ERROR_QRCVEMPTY;// CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp);
         if (stsResult != PCAN_ERROR_QRCVEMPTY)
         {
             switch (CANMsg.ID)
@@ -531,7 +532,74 @@ int main(int, char**)
 
             // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
             if (show_pcan_window)
-                ImGui::ShowDemoWindow(&show_pcan_window);
+                //ImGui::ShowDemoWindow(&show_pcan_window);
+
+            {
+                ImGui::Begin("Dual Track", (bool*)true, ImGuiWindowFlags_AlwaysAutoResize);
+                ImGui::Text("Test");
+                ImGui::Button("Drag Me");
+                if (ImGui::IsItemActive())
+                    ImGui::GetForegroundDrawList()->AddLine(io.MouseClickedPos[0], io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f); // Draw a line between the button and the mouse cursor
+
+                // Drag operations gets "unlocked" when the mouse has moved past a certain threshold
+                // (the default threshold is stored in io.MouseDragThreshold). You can request a lower or higher
+                // threshold using the second parameter of IsMouseDragging() and GetMouseDragDelta().
+                ImVec2 value_raw = ImGui::GetMouseDragDelta(0, 0.0f);
+                ImVec2 value_with_lock_threshold = ImGui::GetMouseDragDelta(0);
+                ImVec2 mouse_delta = io.MouseDelta;
+                ImGui::Text("GetMouseDragDelta(0):");
+                //ImGui::Text("  w/ default threshold: (%.1f, %.1f)", value_with_lock_threshold.x, value_with_lock_threshold.y);
+                ImGui::Text("  w/ zero threshold: (%.1f, %.1f)", value_raw.x, value_raw.y);
+                int leftVal = value_raw.x;
+                int rightVal = -value_raw.y; // negative so that Y-up is positive
+
+                const float DEG_PER_RAD = 57.2958f;
+                double radius = sqrt(leftVal * leftVal + rightVal * rightVal);
+                double theta = atan2(leftVal, rightVal) * DEG_PER_RAD; // X value first because we want up to be 0deg
+
+                ImGui::Text("radius: %f", radius);
+                ImGui::Text("theta: %f", theta);
+
+                float leftTrack;
+                float rightTrack;
+                int index = 0;
+
+                radius = 100; // TODO - RM: JUST FOCUS ON THETA FOR RIGHT NOW
+                //leftTrack = radius * (45 - theta * 90) / 45;
+                //rightTrack = 100, 2 * radius + leftTrack;
+
+                if (theta >= 0. && theta <= 90.) // FRONT-RIGHT
+                {
+                    index = 1;
+                    leftTrack = radius;
+                    rightTrack = radius * cos(2 * theta / DEG_PER_RAD);
+                }
+                else if (theta <= 0. && theta >= -90.) // FRONT-LEFT
+                {
+                    index = 2;
+                    leftTrack = radius * cos(2 * theta / DEG_PER_RAD);
+                    rightTrack = radius;
+                }
+                else if (theta >= 90. && theta <= 180.) // BACK-RIGHT
+                {
+                    index = 3;
+                    leftTrack = -radius * cos(2 * theta / DEG_PER_RAD);
+                    rightTrack = -radius;
+                }
+                else if (theta <= -90. && theta >= -180.) // BACK-LEFT
+                {
+                    index = 4;
+                    leftTrack = -radius;
+                    rightTrack = -radius * cos(2 * theta / DEG_PER_RAD);
+                }
+
+                ImGui::Text("index: %d", index);
+
+                ImGui::VSliderFloat("##int", ImVec2(18, 160), &leftTrack, -100.f, 100.f);
+                ImGui::SameLine();
+                ImGui::VSliderFloat("##int", ImVec2(18, 160), &rightTrack, -100.f, 100.f);
+                ImGui::End();
+            }
 
             // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
             {
