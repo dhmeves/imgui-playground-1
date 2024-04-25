@@ -533,11 +533,10 @@ int main(int, char**)
             // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
             if (show_pcan_window)
                 //ImGui::ShowDemoWindow(&show_pcan_window);
-
+                ImGui::SetNextWindowSize(ImVec2(350, 350), ImGuiCond_Appearing);
             {
-                ImGui::Begin("Dual Track", (bool*)true, ImGuiWindowFlags_AlwaysAutoResize);
-                ImGui::Text("Test");
-                ImGui::Button("Drag Me");
+                ImGui::Begin("Dual Track", (bool*)true);
+                ImGui::Button("JOYSTICK");
                 if (ImGui::IsItemActive())
                     ImGui::GetForegroundDrawList()->AddLine(io.MouseClickedPos[0], io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f); // Draw a line between the button and the mouse cursor
 
@@ -547,14 +546,16 @@ int main(int, char**)
                 ImVec2 value_raw = ImGui::GetMouseDragDelta(0, 0.0f);
                 ImVec2 value_with_lock_threshold = ImGui::GetMouseDragDelta(0);
                 ImVec2 mouse_delta = io.MouseDelta;
-                ImGui::Text("GetMouseDragDelta(0):");
+                //ImGui::Text("GetMouseDragDelta(0):");
                 //ImGui::Text("  w/ default threshold: (%.1f, %.1f)", value_with_lock_threshold.x, value_with_lock_threshold.y);
-                ImGui::Text("  w/ zero threshold: (%.1f, %.1f)", value_raw.x, value_raw.y);
+                ImGui::Text("(x,y): (%.1f, %.1f)", value_raw.x, value_raw.y);
                 int leftVal = value_raw.x;
                 int rightVal = -value_raw.y; // negative so that Y-up is positive
 
                 const float DEG_PER_RAD = 57.2958f;
                 double radius = sqrt(leftVal * leftVal + rightVal * rightVal);
+                if (radius > 100)
+                    radius = 100;
                 double theta = atan2(leftVal, rightVal) * DEG_PER_RAD; // X value first because we want up to be 0deg
 
                 ImGui::Text("radius: %f", radius);
@@ -564,7 +565,7 @@ int main(int, char**)
                 float rightTrack;
                 int index = 0;
 
-                radius = 100; // TODO - RM: JUST FOCUS ON THETA FOR RIGHT NOW
+                //radius = 100; // TODO - RM: JUST FOCUS ON THETA FOR RIGHT NOW
                 //leftTrack = radius * (45 - theta * 90) / 45;
                 //rightTrack = 100, 2 * radius + leftTrack;
 
@@ -593,11 +594,14 @@ int main(int, char**)
                     rightTrack = -radius * cos(2 * theta / DEG_PER_RAD);
                 }
 
-                ImGui::Text("index: %d", index);
-
-                ImGui::VSliderFloat("##int", ImVec2(18, 160), &leftTrack, -100.f, 100.f);
+                //ImGui::Text("index: %d", index);
+                ImGui::Text("LEFT");
                 ImGui::SameLine();
-                ImGui::VSliderFloat("##int", ImVec2(18, 160), &rightTrack, -100.f, 100.f);
+                ImGui::Text("   RIGHT");
+
+                ImGui::VSliderFloat("##int", ImVec2(50, 200), &leftTrack, -100.f, 100.f);
+                ImGui::SameLine();
+                ImGui::VSliderFloat("##int", ImVec2(50, 200), &rightTrack, -100.f, 100.f);
                 ImGui::End();
             }
 
