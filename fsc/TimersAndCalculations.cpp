@@ -247,3 +247,29 @@ uint32_t TimersAndCalculations::TimeUntilTimer(uint32_t& startTime, uint32_t tim
     }
     return timeLeft;
 }
+
+float getMin(float arr[], size_t lenArray)
+{
+    float output = arr[0];
+    for (size_t i = 1; i < lenArray; i++)
+    {
+        if (arr[i] < output)
+        {
+            output = arr[i];
+        }
+    }
+    return output;
+}
+
+float getMax(float arr[], size_t lenArray)
+{
+    float output = arr[0];
+    for (size_t i = 1; i < lenArray; i++)
+    {
+        if (arr[i] > output)
+        {
+            output = arr[i];
+        }
+    }
+    return output;
+}

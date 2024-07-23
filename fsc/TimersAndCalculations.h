@@ -61,6 +61,8 @@ uint64_t micros();
 uint64_t nanos();
 bool Timer(uint64_t& prevTime, uint64_t timeout, bool resetPrevTime, uint64_t current_time = 0, bool useFakeMillis = false);
 double ConvertToFahrenheit(double celsius);
+float getMin(float arr[], size_t lenArray);
+float getMax(float arr[], size_t lenArray);
 
 
 class TimersAndCalculations

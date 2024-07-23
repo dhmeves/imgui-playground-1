@@ -383,7 +383,7 @@ int main(int, char**)
     //IM_ASSERT(font != nullptr);
 
     // Our state
-    bool show_pcan_window = true;
+    bool show_pcan_window = false;
     bool show_demo_window = true;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -747,7 +747,52 @@ int main(int, char**)
                 ImGui::End();
             }
 
+            static bool show_PID_window = true;
+            // 3. Show a PID loop window
+            if (show_PID_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(350, 350), ImGuiCond_Appearing);
+                ImGui::Begin("PID Window", &show_PID_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                ImGui::Text("Hello from PID window!");
+                {
+                    const int NUM_VALUES = 90;
+                    static float values[NUM_VALUES] = {};
+                    static int values_offset = 0;
+                    float average = 0.0f;
+                    static int counter = 0;
 
+                    static uint64_t prevUpdateVal = 0;
+                    const uint64_t updateValTimeout = 50;
+                    if (io.MousePos.y > -10000 && io.MousePos.y < 10000)
+                    {
+                        if (Timer(prevUpdateVal, updateValTimeout, true))
+                        {
+                            values[counter] = io.MousePos.y;
+                            if (counter < NUM_VALUES - 1)
+                            {
+                                counter++;
+                            }
+                            // push everything back
+                            if (counter == NUM_VALUES - 1)
+                            {
+                                for (int i = 1; i < NUM_VALUES; i++)
+                                {
+                                    values[i - 1] = values[i];
+                                }
+                            }
+                        }
+                    }
+                    for (int n = 0; n < IM_ARRAYSIZE(values); n++)
+                        average += values[n];
+                    average /= (float)IM_ARRAYSIZE(values);
+                    char overlay[32];
+                    sprintf(overlay, "avg %0.2f", average);
+                    ImGui::PlotLines("Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, getMin(values, NUM_VALUES), getMax(values, NUM_VALUES), ImVec2(0, 80.0f));
+                }
+                if (ImGui::Button("Close Me"))
+                    show_PID_window = false;
+                ImGui::End();
+            }
 
 
 
