@@ -787,7 +787,59 @@ int main(int, char**)
                     average /= (float)IM_ARRAYSIZE(values);
                     char overlay[32];
                     sprintf(overlay, "avg %0.2f", average);
-                    ImGui::PlotLines("Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, getMin(values, NUM_VALUES), getMax(values, NUM_VALUES), ImVec2(0, 80.0f));
+
+                    if (ImGui::BeginTable("table_nested1", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable))
+                    {
+                        ImGui::TableSetupColumn("Graph");
+                        ImGui::TableSetupColumn("Values");
+                        ImGui::TableHeadersRow();
+
+                        ImGui::TableNextColumn();
+
+                        float minVal = getMin(values, NUM_VALUES);
+                        float maxVal = getMax(values, NUM_VALUES);
+                        const float PLOT_HEIGHT = 80.0f;
+                        ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, minVal, maxVal, ImVec2(0, PLOT_HEIGHT));
+
+
+                        //ImGui::Text("A0 Row 0");
+                        ImGui::TableNextColumn();
+                        //ImGui::Text("A1 Row 0");
+                        {
+                            float rows_height = 80 / 3;
+                            if (ImGui::BeginTable("table_nested2", 1, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable))
+                            {
+                                ImGui::TableSetupColumn("B0");
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                ImGui::Text("max: %d", (int)maxVal);
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                if (counter < NUM_VALUES - 1)
+                                {
+                                    ImGui::Text("val: %d", (int)values[counter - 1]);
+                                }
+                                else
+                                {
+                                    ImGui::Text("val: %d", (int)values[counter]);
+                                }
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                ImGui::Text("min: %d", (int)minVal);
+
+                                ImGui::EndTable();
+                            }
+                        }
+                        //ImGui::TableNextColumn(); ImGui::Text("A0 Row 1");
+                        //ImGui::TableNextColumn(); ImGui::Text("A1 Row 1");
+                        ImGui::EndTable();
+                    }
+                    //ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, getMin(values, NUM_VALUES), getMax(values, NUM_VALUES), ImVec2(0, 80.0f));
+                    //ImGui::SameLine();
+                    ImGui::Text("max");
                 }
                 if (ImGui::Button("Close Me"))
                     show_PID_window = false;
