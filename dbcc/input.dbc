@@ -1,0 +1,238 @@
+VERSION ""
+
+
+NS_ :
+  CM_
+  BA_DEF_
+  BA_
+  VAL_
+  BA_DEF_DEF_
+  SIG_VALTYPE_
+
+BS_:
+
+BU_: Vector__XXX
+
+
+BO_ 512 PGN_200: 8 Vector__XXX
+SG_ ENG_HRS_ECU : 0|32@1+ (0.05,0) [0|214748364.75] "hrs" Vector__XXX
+SG_ ENG_REV_ECU : 32|32@1+ (0.05,0) [0|214748364.75] "revs" Vector__XXX
+
+BO_ 513 PGN_201: 8 Vector__XXX
+SG_ ENG_SPD_ECU : 0|16@1+ (0.125,0) [0|3000] "RPM" Vector__XXX
+SG_ ENG_CLT_TMP_ECU : 16|8@1+ (1.8,-40) [-40|419] "°F" Vector__XXX
+SG_ ENG_FUEL_PR_ECU : 24|8@1+ (0.58015,0) [0|147.93825] "PSI" Vector__XXX
+SG_ ENG_OIL_PR_ECU : 32|8@1+ (0.58015,0) [0|147.93825] "PSI" Vector__XXX
+SG_ ENG_BAT_VLT_ECU : 40|16@1+ (0.05,0) [0|18] "V" Vector__XXX
+SG_ ENG_PCT_LOD_ECU : 56|8@1+ (1,0) [0|255] "%" Vector__XXX
+
+BO_ 514 PGN_202: 8 Vector__XXX
+SG_ ENG_FUL_RT_ECU : 0|16@1+ (0.0132,0) [0|865.062] "gal/hr" Vector__XXX
+SG_ ENG_INT_TMP_ECU : 16|8@1+ (1.8,-40) [-40|419] "°F" Vector__XXX
+SG_ ENG_INT_PR_ECU : 24|8@1+ (0.29008,0) [0|73.9704] "PSI" Vector__XXX
+SG_ ENG_FUL_LVL_ECU : 32|8@1+ (0.4,0) [0|100] "%" Vector__XXX
+SG_ ENG_MAC_SPD_ECU : 40|16@1+ (0.0087378,0) [0|572.631723] "mph" Vector__XXX
+SG_ MULCHER_ON_ECU : 62|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ PRK_BRAK_ON_ECU : 60|2@1+ (1,0) [0|3] "" Vector__XXX
+
+BO_ 517 PGN_205: 8 Vector__XXX
+SG_ HYD_HEAD_PR_ECU : 0|16@1+ (0.7251885,0) [0|47525.2283475] "PSI" Vector__XXX
+SG_ HYD_BRAK_PR_ECU : 16|16@1+ (0.7251885,0) [0|47525.2283475] "PSI" Vector__XXX
+SG_ HYD_TEMP_ECU : 32|8@1+ (1.8,-58) [-50|401] "°F" Vector__XXX
+SG_ HYD_LVL_ECU : 40|8@1+ (0.4,0) [0|100] "%" Vector__XXX
+SG_ MULCHER_SPD_ECU : 48|16@1+ (0.125,0) [0|3000] "RPM" Vector__XXX
+
+BO_ 515 PGN_203: 8 Vector__XXX
+SG_ A_ROLL_ECU : 0|16@1- (0.01,0) [-327.68|327.67] "°" Vector__XXX
+SG_ A_PITCH_ECU : 16|16@1- (0.01,0) [-327.68|327.67] "°" Vector__XXX
+SG_ C_ROLL_ECU : 32|16@1- (0.01,0) [-327.68|327.67] "°" Vector__XXX
+SG_ C_PITCH_ECU : 48|16@1- (0.01,0) [-327.68|327.67] "°" Vector__XXX
+
+BO_ 1280 PGN_500: 8 Vector__XXX
+SG_ ECU_PRM_KI1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ ECU_PRM_KI2 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ ECU_PRM_KI3 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ ECU_PRM_KI4 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ ECU_PRM_KI5 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ ECU_PRM_KP1 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ ECU_PRM_KP2 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ ECU_PRM_PWR_MGMT : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1024 PGN_400: 8 Vector__XXX
+SG_ PID_TARGET_16 : 0|16@1- (1,0) [-32768|32767] "" Vector__XXX
+SG_ PID_ACTUAL_16 : 16|16@1- (1,0) [-32768|32767] "" Vector__XXX
+SG_ PID_RAW_OUT_16 : 32|16@1- (1,0) [-32768|32767] "" Vector__XXX
+SG_ K73_CURRENT : 48|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+
+BO_ 2566851840 PGN_18FF0D00: 8 Vector__XXX
+SG_ outToolSpeedCalcMin_rpm : 0|16@1+ (1,0) [0|65535] "RPM" Vector__XXX
+SG_ outMotorTargetMax_prml : 16|16@1+ (0.01,0) [0|655.35] "%" Vector__XXX
+SG_ maxPressure_bar : 32|16@1+ (1,0) [0|65535] "bar" Vector__XXX
+SG_ outToolSpeedCalcTarget_rpm : 48|16@1+ (1,0) [0|65535] "RPM" Vector__XXX
+
+BO_ 2566851584 PGN_18FF0C00: 8 Vector__XXX
+SG_ LEARN_FAILED : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ LEARN_FAILED_1 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ LEARN_FAILED_2 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ LEARN_FAILED_3 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ maxDisplcSpdEstab : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ trgtCurrntEstab : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ flag3 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ flag4 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 2566851328 PGN_18FF0B00: 8 Vector__XXX
+SG_ A04_REV_HIGHFLOW_mA : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ A18_FWD_HIGHFLOW_mA : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ A33_HEAD_BRAKE_ON : 16|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ A05_HEAD_BRAKE_PROP_RELIEF_mA : 32|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ idealMotorOutput_prml : 48|16@1+ (0.01,0) [0|655.35] "%" Vector__XXX
+
+BO_ 2566851072 PGN_18FF0A00: 8 Vector__XXX
+SG_ K73_HIGHFLOW_mA : 0|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ A31_HEAD_PUMP_PSI_RELIEF : 16|16@1+ (1,0) [0|65535] "PSI" Vector__XXX
+SG_ K38_HEAD_PSI_TXDCR : 32|16@1+ (1,0) [0|65535] "PSI" Vector__XXX
+SG_ K17_FUSION_mA : 48|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+
+BO_ 2566850816 PGN_18FF0900: 8 Vector__XXX
+SG_ K17_MLCHR_STPNT_mA : 0|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ K42_DST_TEMP : 16|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ K54_DST_SPD_RPM : 32|32@1+ (1,0) [0|4294967295] "RPM" Vector__XXX
+
+BO_ 2566850560 PGN_18FF0800: 8 Vector__XXX
+SG_ toolSpeedActFiltRPM : 0|16@1+ (1,0) [0|65535] "RPM" Vector__XXX
+SG_ motorPrFiltBar : 16|16@1+ (1,0) [0|65535] "Bar" Vector__XXX
+SG_ motorCmd : 32|16@1+ (0.01,0) [0|655.35] "%" Vector__XXX
+SG_ speedStdyStat : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ pressStdyStat : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 2566850304 PGN_18FF0700: 8 Vector__XXX
+SG_ LLC_Factor : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ stErrDetn : 16|32@1+ (1,0) [0|4294967295] "" Vector__XXX
+
+BO_ 2566850048 PGN_18FF0600: 8 Vector__XXX
+SG_ AUX_1A_MA : 0|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ AUX_1B_MA : 16|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ FAN_COIL_MA : 32|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ FUSION_STATE : 48|16@1+ (1,0) [0|65535] "" Vector__XXX
+
+BO_ 2566849792 PGN_18FF0500: 8 Vector__XXX
+SG_ LIFT_UP_MA : 0|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ LIFT_DN_MA : 16|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ TILT_UP_MA : 32|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ TILT_DN_MA : 48|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+
+BO_ 2566849536 PGN_18FF0400: 8 Vector__XXX
+SG_ LEFT_TRCK_FWD_MA : 0|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ LEFT_TRCK_REV_MA : 16|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ RIGHT_TRCK_FWD_MA : 32|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ RIGHT_TRCK_REV_MA : 48|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+
+BO_ 2566849280 PGN_18FF0300: 8 Vector__XXX
+SG_ LEFT_TRCK_EDPC : 0|16@1- (1,0) [-32768|32767] "%" Vector__XXX
+SG_ RIGHT_TRCK_EDPC : 16|16@1- (1,0) [-32768|32767] "%" Vector__XXX
+SG_ LEFT_TRCK_OUT : 32|16@1- (1,0) [-32768|32767] "%" Vector__XXX
+SG_ RIGHT_TRCK_OUT : 48|16@1- (1,0) [-32768|32767] "%" Vector__XXX
+
+BO_ 2566849024 PGN_18FF0200: 8 Vector__XXX
+SG_ PID_ACTUAL : 0|32@1- (1,0) [-2147483648|2147483647] "" Vector__XXX
+SG_ PID_RAW_OUT : 32|32@1- (1,0) [-2147483648|2147483647] "" Vector__XXX
+
+BO_ 2566848768 PGN_18FF0100: 8 Vector__XXX
+SG_ FAN_STATE : 5|3@1+ (1,0) [0|7] "" Vector__XXX
+SG_ MLCHR_STATE : 2|3@1+ (1,0) [0|7] "" Vector__XXX
+SG_ ENG_STATE : 13|3@1+ (1,0) [0|7] "" Vector__XXX
+SG_ K73_CURRENT : 16|16@1+ (1,0) [0|65535] "mA" Vector__XXX
+SG_ PID_TARGET : 32|32@1- (1,0) [-2147483648|2147483647] "" Vector__XXX
+
+BO_ 2558959619 PGN_1886A003: 8 Vector__XXX
+SG_ RL_1 : 6|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_2 : 4|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_3 : 2|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_4 : 0|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_5 : 14|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_6 : 12|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_7 : 10|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_8 : 8|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_9 : 22|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_10 : 20|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_11 : 18|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_12 : 16|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_13 : 30|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ RL_14 : 28|2@1+ (1,0) [0|3] "" Vector__XXX
+
+BO_ 2365445777 PGN_00FDD691: 8 Vector__XXX
+SG_ X_POS_NEU : 0|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ X_POS_RHT : 2|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ X_POS_LFT : 4|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ X_POS : 6|10@1+ (1,0) [0|1023] "" Vector__XXX
+SG_ Y_POS_NEU : 16|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ Y_POS_FWD : 18|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ Y_POS_RWD : 20|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ Y_POS : 22|10@1+ (1,0) [0|1023] "" Vector__XXX
+SG_ NA4 : 44|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ NBAZ1 : 46|2@1+ (1,0) [0|3] "" Vector__XXX
+
+BO_ 2365446033 PGN_00FDD791: 8 Vector__XXX
+SG_ CAAV2_NEU : 0|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ CAAV2_RWD : 2|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ CAAV2_FWD : 4|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ CAAV2_POS : 6|10@1+ (1,0) [0|1023] "" Vector__XXX
+SG_ CABH10_NEU : 16|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ CABH10_RHT : 18|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ CABH10_LFT : 20|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ CABH10_POS : 22|10@1+ (1,0) [0|1023] "" Vector__XXX
+SG_ JABV3_NEU : 32|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ JABV3_RWD : 34|2@1+ (1,0) [0|3] "" Vector__XXX
+SG_ JABV3_FWD : 36|2@1+ (1,0) [0|3] "" Vector__XXX
+
+BO_ 2566848512 PGN_18FF0000: 8 Vector__XXX
+SG_ UPPER_TEMP : 0|16@1- (1,0) [-32768|32767] "" Vector__XXX
+SG_ LOWER_TEMP : 16|16@1- (1,0) [-32768|32767] "" Vector__XXX
+SG_ Y_AXIS_ECU : 32|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ X_AXIS_ECU : 48|16@1+ (1,0) [0|65535] "" Vector__XXX
+
+BO_ 2566848520 PGN_18FF0008: 8 Vector__XXX
+SG_ TASK_TIME : 0|32@1+ (1,0) [0|4294967295] "" Vector__XXX
+SG_ LOOP_TIME : 32|32@1+ (1,0) [0|4294967295] "" Vector__XXX
+
+BO_ 372 PGN_374_618_Y_AXIS: 8 Vector__XXX
+SG_ YAW_RATE : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ CLU_STAT : 16|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ YAW_RATE_STAT : 20|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ TEMP_RATE_Z : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ AY : 32|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ MSG_CNT : 48|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ AY_STAT : 52|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ CRC : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 376 PGN_378_618_X_AXIS: 8 Vector__XXX
+SG_ ROLL_RATE : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ CLU_STAT5 : 16|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ ROLL_RATE_STAT : 20|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ CLU_DIAG : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+SG_ AX : 32|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ AX_STAT : 52|4@1+ (1,0) [0|15] "" Vector__XXX
+
+BO_ 380 PGN_37C_618_Z_AXIS: 8 Vector__XXX
+SG_ PITCH_RATE : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ HW_INDEX : 16|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ PITCH_RATE_STAT : 20|4@1+ (1,0) [0|15] "" Vector__XXX
+SG_ AZ : 32|16@1+ (1,0) [0|65535] "" Vector__XXX
+SG_ AZ_STAT : 52|4@1+ (1,0) [0|15] "" Vector__XXX
+
+BO_ 256 Symbol: 3 Vector__XXX
+
+CM_ BO_ 2566848768 "Sig=ENG_CRANK_ECU 0";
+
+BA_DEF_  "BusType" STRING ;
+
+BA_DEF_DEF_  "BusType" "CAN";
+
+BA_ "BusType" "CAN";
+VAL_ 514 MULCHER_ON_ECU 0 "FALSE" 1 "TRUE" 2 "ERROR" 3 "N/A";
+VAL_ 514 PRK_BRAK_ON_ECU 0 "FALSE" 1 "TRUE" 2 "ERROR" 3 "N/A";
+VAL_ 2566851328 A04_REV_HIGHFLOW_mA 0 "FALSE" 1 "TRUE" 2 "ERROR" 3 "N/A";
+VAL_ 2566851328 A18_FWD_HIGHFLOW_mA 0 "FALSE" 1 "TRUE" 2 "ERROR" 3 "N/A";
+VAL_ 2566848768 FAN_STATE 0 "FAN_STATE_OFF" 1 "FAN_STATE_START" 2 "FAN_STATE_RUN" 3 "FAN_STATE_COAST" 4 "FAN_STATE_ERROR";
+VAL_ 2566848768 MLCHR_STATE 0 "MLCHR_STATE_OFF" 1 "MLCHR_STATE_PRESTART" 2 "MLCHR_STATE_START" 3 "MLCHR_STATE_RUN" 4 "MLCHR_STATE_STDBY" 5 "MLCHR_STATE_KILL";
+VAL_ 2566848768 ENG_STATE 0 "ENG_STATE_OFF" 1 "ENG_STATE_IGN" 2 "ENG_STATE_PRESTART" 3 "ENG_STATE_START" 4 "ENG_STATE_RUN" 5 "ENG_STATE_KILL";

@@ -753,8 +753,27 @@ int main(int, char**)
             {
                 ImGui::SetNextWindowSize(ImVec2(350, 350), ImGuiCond_Appearing);
                 ImGui::Begin("PID Window", &show_PID_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-                ImGui::Text("Hello from PID window!");
                 {
+                    if (ImGui::Button("Convert DBC to JSON"))
+                    {
+                        // RUNS DBCC.EXE TO CONVERT OUR `input.dbc` INTO A .JSON FILE!
+                        LPCSTR open = "runas";
+                        LPCSTR executable = "dbcc.exe";
+                        LPCSTR parameters = "-j input.dbc";
+                        LPCSTR path = "dbcc\\";
+                        //LPCSTR filepath = "dbcc\\putty.exe";
+                        printf("%d\n", ShellExecuteA(NULL, open, executable, parameters, path, SW_SHOWNORMAL)); // RETURNS 42 IF GOOD!
+                    }
+                    if (ImGui::Button("Open Putty!"))
+                    {
+                        // RUNS DBCC.EXE TO CONVERT OUR `input.dbc` INTO A .JSON FILE!
+                        LPCSTR open = "runas";
+                        LPCSTR executable = "dbcc\\putty.exe";
+                        //LPCSTR path = "dbcc\\";
+                        //LPCSTR filepath = "dbcc\\putty.exe";
+                        printf("%d\n", ShellExecuteA(NULL, open, executable, NULL, NULL, SW_SHOWNORMAL)); // RETURNS 42 IF GOOD!
+                    }
+                    ImGui::Text("Hello from PID window!");
                     const int NUM_VALUES = 90;
                     static float values[NUM_VALUES] = {};
                     static int values_offset = 0;
