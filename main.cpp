@@ -13,6 +13,7 @@
 #include <d3d11.h>
 #include <tchar.h>
 #include <math.h>
+#include <fstream>
 
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
@@ -59,6 +60,42 @@ void LookAt(const float* eye, const float* at, const float* up, float* m16);
 void Normalize(const float* a, float* r);
 float Dot(const float* a, const float* b);
 void Cross(const float* a, const float* b, float* r);
+
+int WriteOutFile(std::string str, uint8_t* iv, const char* path, uint16_t crc, long len)
+{
+    int output = -1;
+    std::ofstream outfile(path, std::ios::binary);
+    //long aesLen = TaC.GetAESLength(len);
+    if (outfile.is_open())
+    {
+        outfile << "/* WARNING: ALTERATIONS TO THIS FILE MAY RESULT IN CORRUPTION */\n/* EDIT AT YOUR OWN RISK */" << std::endl; // Write the encryption heading
+        //ADDING IV TO FILE
+        //outfile << encStrIvLine << std::endl;
+        //for (int i = 0; i < AES_BLOCKLEN; i++)
+        //{
+        //    outfile << std::dec << std::to_string(iv[i]) << std::endl;// << std::endl;
+        //}
+        outfile << std::endl;
+        // ADDING LENGTH OF JSON TO FILE
+        //outfile << encStrLengthLine << std::endl;
+        outfile << len << std::endl;
+        // ADDING CRC OF (PLAINTEXT) JSON TO FILE
+        //outfile << encStrCrcLine << std::endl;
+        //outfile << crc << std::endl;
+        // ADDING START OF ENCRYPTION STRING TO FILE
+        //outfile << encStrTriggerLine << std::endl;
+        // ADDING ENCRYPTED STRING TO FILE
+        //std::string s = "";
+        //std::string s(encryptedStr.begin(), encryptedStr.end());
+        //long len = s.length();
+        printf("string length: %d\n", len);
+        outfile.write(str.c_str(), len);
+        outfile.close();
+        output = 0;
+    }
+    return output;
+}
+
 // END - 3D PROJECTION
 
 #include "TimersAndCalculations.h" // fsc library
@@ -772,6 +809,15 @@ int main(int, char**)
                         //LPCSTR path = "dbcc\\";
                         //LPCSTR filepath = "dbcc\\putty.exe";
                         printf("%d\n", ShellExecuteA(NULL, open, executable, NULL, NULL, SW_SHOWNORMAL)); // RETURNS 42 IF GOOD!
+                    }
+                    if (ImGui::Button("Create an arbitrary C-File!"))
+                    {
+                        std::string string = "test_check_check";
+                        uint8_t iv[] = {1,2};
+                        const char path[] = "test.c";
+                        uint16_t crc = 1234;
+                        long len = string.length();
+                        WriteOutFile(string, iv, path, crc, len);
                     }
                     ImGui::Text("Hello from PID window!");
                     const int NUM_VALUES = 90;
