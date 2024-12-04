@@ -595,11 +595,15 @@ int main(int, char**)
                     radius = 100;
                 double theta = atan2(leftVal, rightVal) * DEG_PER_RAD; // X value first because we want up to be 0deg
 
+                if (theta < -180.)
+                    theta = -180.;
+                if (theta > 180.)
+                    theta = 180.;
                 ImGui::Text("radius: %f", radius);
                 ImGui::Text("theta: %f", theta);
 
-                float leftTrack;
-                float rightTrack;
+                float leftTrack = 0;
+                float rightTrack = 0;
                 int index = 0;
 
                 //radius = 100; // TODO - RM: JUST FOCUS ON THETA FOR RIGHT NOW
@@ -631,7 +635,69 @@ int main(int, char**)
                     rightTrack = -radius * cos(2 * theta / DEG_PER_RAD);
                 }
 
+                float leftAbs = abs(leftTrack);
+                float rightAbs = abs(rightTrack);
+                float thetaCalc = 0;
+
+                if (leftAbs < rightAbs)
+                {
+                    if (leftTrack < rightTrack)
+                    {
+                        thetaCalc = 1; // FRONT-LEFT
+                        thetaCalc = -DEG_PER_RAD * (acos(leftTrack / rightTrack)) / 2.0;
+                    }
+                    else
+                    {
+                        thetaCalc = 2; // BACK-RIGHT
+                        thetaCalc = 90.0 + DEG_PER_RAD * (acos(-leftTrack / rightTrack)) / 2.0;
+                    }
+                }
+                else if (rightAbs < leftAbs)
+                {
+                    if (leftTrack < rightTrack)
+                    {
+                        thetaCalc = 3; // BACK-LEFT
+                        thetaCalc = -90.0 - DEG_PER_RAD * (acos(-rightTrack / leftTrack)) / 2.0;
+                    }
+                    else
+                    {
+                        thetaCalc = 4; // FRONT-RIGHT
+                        thetaCalc = DEG_PER_RAD * (acos(rightTrack / leftTrack)) / 2.0;
+                    }
+                }
+                else
+                {
+                    if (leftTrack > 0.0)
+                    {
+                        if (rightTrack > 0.0)
+                        {
+                            thetaCalc = 0.; // foward
+                        }
+                        else
+                        {
+                            thetaCalc = 90.; // right
+                        }
+                    }
+                    else
+                    {
+                        if (rightTrack > 0.0)
+                        {
+                            thetaCalc = -90.; // left
+                        }
+                        else
+                        {
+                            thetaCalc = 180; // back
+                        }
+                    }
+                }
                 //ImGui::Text("index: %d", index);
+                ImGui::Text("thetaCalc: %f", thetaCalc);
+                ImGui::Text("LEFT");
+                ImGui::SameLine();
+                ImGui::Text("   RIGHT");
+
+                // IN ABSOLUTE VALUE
+                ImGui::SameLine();
                 ImGui::Text("LEFT");
                 ImGui::SameLine();
                 ImGui::Text("   RIGHT");
@@ -639,6 +705,10 @@ int main(int, char**)
                 ImGui::VSliderFloat("##int", ImVec2(50, 200), &leftTrack, -100.f, 100.f);
                 ImGui::SameLine();
                 ImGui::VSliderFloat("##int", ImVec2(50, 200), &rightTrack, -100.f, 100.f);
+                ImGui::SameLine();
+                ImGui::VSliderFloat("##int", ImVec2(50, 200), &leftAbs, -100.f, 100.f);
+                ImGui::SameLine();
+                ImGui::VSliderFloat("##int", ImVec2(50, 200), &rightAbs, -100.f, 100.f);
                 ImGui::End();
             }
 
