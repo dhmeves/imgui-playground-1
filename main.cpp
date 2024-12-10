@@ -118,7 +118,7 @@ fsc_mahony imu;
 fsc_madgwick imu;
 #endif
 
-//ManualRead CAN;
+ManualRead CAN;
 
 
 Quaternion imuC = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -440,7 +440,7 @@ int main(int, char**)
         //printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
         //printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
         //printf("\n~~~~~~~~~~~~~~~~~~~~\n");
-        TPCANStatus stsResult = PCAN_ERROR_QRCVEMPTY;// CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp);
+        TPCANStatus stsResult = CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp); // PCAN_ERROR_QRCVEMPTY;
         if (stsResult != PCAN_ERROR_QRCVEMPTY)
         {
             switch (CANMsg.ID)
@@ -486,7 +486,7 @@ int main(int, char**)
                 break;
             }
             }
-            imu.updateIMU(&imuC, -MM7_C_ROLL_RATE, MM7_C_PITCH_RATE, MM7_C_YAW_RATE, MM7_C_AX, MM7_C_AY, MM7_C_AZ, .0033); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
+            imu.updateIMU(&imuC, MM7_C_PITCH_RATE, -MM7_C_ROLL_RATE, MM7_C_YAW_RATE, -MM7_C_AY, -MM7_C_AX, MM7_C_AZ, .0019); // TODO - NOTE THAT SAMPLE RATE IS TRIPLED (0.0033 INSTEAD OF 0.01) DUE TO GETTING 3 AXISES IN 1 MESSAGE EACH!!
 
             static uint32_t counter = 0;
             rollRates[counter] = MM7_C_ROLL_RATE;
