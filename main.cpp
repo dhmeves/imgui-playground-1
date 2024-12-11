@@ -342,6 +342,275 @@ float CalculatePitchEuler(float x, float y, float z)
     return pitch;
 }
 
+/**
+ * @brief Slope-intercept linear scaling function, option to clip output to minOut~maxOut range.  y = mx + b.
+ *        Note that `minOut` does NOT have to be the smaller number if a inverse slope is required. Execution
+ *        time: approx 8us when `clipOutput` = `TRUE`.
+ *
+ * @param[in] input input val
+ * @param[in] minIn minimum input val
+ * @param[in] maxIn maximum input val
+ * @param[in] minOut minimum output val
+ * @param[in] maxOut maximum output val
+ * @param[in] clipOutput `TRUE`: if output is found to be outside the range of minOut~maxOut, clip to the max. or min.
+ *                    `FALSE`: Scale with no adjustments if output is outside range.
+ * @return scaled output
+ */
+double scale(double input, double minIn, double maxIn, double minOut, double maxOut, bool clipOutput)
+{
+    if (minIn == maxIn)
+    {
+        return 0.0; // let's not divide by 0 :)
+    }
+    double slope = ((maxOut - minOut) / (maxIn - minIn));
+    double intercept = (minOut - (minIn * slope));
+    double output = ((slope * input) + intercept);
+    if (clipOutput) //  DON'T ALLOW OUTPUT OUTSIDE RANGE
+    {
+        double minVal = (minOut < maxOut) ? minOut : maxOut; //	FIND MIN/MAX VALUES - INCASE WE ARE INVERSELY SCALING
+        double maxVal = (minOut > maxOut) ? minOut : maxOut;
+        if (output > maxVal)
+            output = maxVal;
+        if (output < minVal)
+            output = minVal;
+    }
+    return output;
+}
+
+/**
+ * @brief millisecond-time-based function that calculates an output given a current value, a setpoint, value range,
+ * and time parameters. The output will follow a maximum slope calculated by using the min/max values and the rampTime
+ *
+ * @param[in,out] *currentlVal - passes current value in and the calculated new value out.
+ * @param[in] setpoint - Where `*currentVal` should be after ramp is complete
+ * @param[in] min - minimum value that `*currentVal` can be
+ * @param[in] max - maximum value that `*currentVal` can be
+ * @param[in,out] *prevTime - pointer that keeps track of the last time we calculated a value
+ * @param[in] rampTime - (ms) how long the ramp should take from `min` to `max`
+ * @return
+ */
+double RampScale(double currentVal, double setpoint, double min, double max, uint64_t* prevTime, uint64_t rampTime, bool* finishedRamp)
+{
+    *finishedRamp = FALSE;
+    double minVal = min;//(min < max) ? min : max;	//	FIND MIN/MAX VALUES - INCASE WE ARE INVERSELY SCALING
+    double maxVal = max;// (min > max) ? min : max;
+    uint64_t now = millis();
+    uint64_t timeSince = now - *prevTime;
+    *prevTime = now;
+    if (rampTime == 0) // let's not divide by 0
+    {
+        rampTime = 1;
+    }
+    double maxIncrement = (int)(((maxVal - minVal) / rampTime)* (double)timeSince); // FLOATS MAKE NEGATIVE NUMBERS SAD!
+    double increment = setpoint - currentVal;
+    double absIncrement = increment;
+    bool goUp;
+    if (increment == 0)
+    {
+        *finishedRamp = TRUE; // if we aren't incrementing, we're done ramping
+        return currentVal;
+    }
+    if (increment > 0) // have to increase to reach setpoint
+    {
+        goUp = TRUE;
+    }
+    else // have to decrease to reach setpoint
+    {
+        absIncrement = -increment;
+        goUp = FALSE;
+    }
+
+    if (absIncrement < maxIncrement)
+    {
+        currentVal += increment;
+    }
+    else if (goUp)
+    {
+        currentVal += maxIncrement;
+    }
+    else
+    {
+        currentVal -= maxIncrement;
+    }
+
+    if (currentVal > maxVal) // limit output to between inMin and inMax
+    {
+        currentVal = maxVal;
+        *finishedRamp = TRUE; // if we are clipping, we're done ramping
+    }
+    if (currentVal < minVal)
+    {
+        currentVal = minVal;
+        *finishedRamp = TRUE;
+    }
+
+    if (currentVal == setpoint) // if we are exactly equal, we're done ramping
+    {
+        *finishedRamp = TRUE;
+    }
+    return currentVal;
+}
+
+#define CMD_NO_CHANGE 0
+#define CMD_DECREMENT 1
+#define CMD_INCREMENT 2
+
+/**
+ * @brief Increments/Decrements a given value by a certain amount up or down given a tri-state bool
+ *      Also clips to a min/max value.
+ *
+ * @param[inout] value* pointer to value that will be incremented/decremented
+ * @param[in] increDecrement tri-state input, 1 = decrement, 2 = increment, anything else = don't change
+ * @param[in] incrementVal How much to increment/decrement
+ * @param[in] minRange minimum value to clip `value` to if decremented below
+ * @param[in] maxRange maximum value to clip `value` to if incremented above
+ */
+void IncrementValue(int16_t* value, uint8_t increDecrement, uint16_t incrementVal, int32_t minRange, int32_t maxRange)
+{
+    // sint32 output = input; // Set output to input so we don't send garbage if we don't change anything.
+    if (increDecrement == CMD_DECREMENT)
+    {
+        *value -= incrementVal;
+        if (*value < minRange) // clip value if outside maxRange
+        {
+            *value = minRange;
+        }
+    }
+    else if (increDecrement == CMD_INCREMENT)
+    {
+        *value += incrementVal;
+        if (*value > maxRange) // clip value if outside maxRange
+        {
+            *value = maxRange;
+        }
+    }
+}
+
+
+typedef struct
+{
+    // INPUTS
+    int16_t joystickVal;
+    int16_t posMin_mA;
+    int16_t posMax_mA;
+    int16_t negMin_mA;
+    int16_t negMax_mA;
+    int16_t rampStartTime;
+    int16_t rampStopTime;
+    int16_t deadband;
+    int16_t controlModeMult;
+
+    // PRIVATE/INTERNAL
+    int8_t setpoint;        // calculated setpoint (ramped)
+    int8_t currentSetpoint; // calculated end-of-ramp setpoint
+    int8_t prevSetpoint;    // setpoint from previous loop
+    uint64_t prevTime;
+    bool finishedRamp;
+
+    // OUTPUTS
+    int16_t outputPositive_mA;
+    int16_t outputNegative_mA;
+
+} rampedOutput_ts;
+
+#define COIL_CURRENT_0_MA 0
+
+#define MIN_SINT8_SETPNT -127//(int8_t)-127
+#define MAX_SINT8_SETPNT 127//(int8_t)127
+
+#define NEG_THOUSAND -1000.0f
+#define NEG_HUNDRED -100.0f
+#define NEG_TWO -2.0f
+#define ZERO_FLT 0.0f
+#define ONE_HALF 0.5f
+#define ONE_FLT 1.0f
+#define THREE_HALFS 1.5f
+#define TWO 2.0f
+#define FOUR 4.0f
+#define EIGHT 8.0f
+#define POS_HUNDRED 100.0f
+#define POS_THOUSAND 1000.0f
+
+#define SCANRECO_LINK_STATUS_RUNNING 0x01
+#define SCANRECO_WDT_TIMEOUT 1000
+#define SCANRECO_INPUT_IDLE 127
+#define SCANRECO_INPUT_MIN 0
+#define SCANRECO_INPUT_MAX 254
+#define SCANRECO_INPUT_BTN_NOT_PRESSED 0x00
+#define SCANRECO_INPUT_BTN_PRESSED 0x01
+
+void RampedOutput(rampedOutput_ts* rampedVals)
+{
+    // Sensitivity % F-R
+    int16_t sensitivity_H = 127 + ((127 * rampedVals->deadband) / 100); // 10% GAP sensitivity max (127-140)
+    int16_t sensitivity_L = 127 - ((127 * rampedVals->deadband) / 100); // 10% GAP sensitivity max (115-127)
+    bool inNeutral = false;
+
+    // Adjust for deadband and control aggression
+    if (rampedVals->joystickVal > 127)//sensitivity_H)
+    {
+        rampedVals->currentSetpoint = (int8_t)scale(rampedVals->joystickVal, SCANRECO_INPUT_IDLE/*sensitivity_H*/, SCANRECO_INPUT_MAX, ZERO_FLT, (MAX_SINT8_SETPNT * rampedVals->controlModeMult) / POS_HUNDRED, TRUE);
+    }
+    else if (rampedVals->joystickVal < 127)//sensitivity_L)
+    {
+        rampedVals->currentSetpoint = (int8_t)scale(rampedVals->joystickVal, SCANRECO_INPUT_IDLE/*sensitivity_L*/, SCANRECO_INPUT_MIN, ZERO_FLT, (MIN_SINT8_SETPNT * rampedVals->controlModeMult) / POS_HUNDRED, TRUE);
+    }
+    else
+    {
+        bool inNeutral = true;
+        rampedVals->currentSetpoint = 0;
+    }
+
+    // Ramp setpoint
+    if (inNeutral) // stop ramp time
+    {
+        rampedVals->setpoint = RampScale(rampedVals->prevSetpoint, rampedVals->currentSetpoint, MIN_SINT8_SETPNT, MAX_SINT8_SETPNT, &rampedVals->prevTime, rampedVals->rampStartTime, &rampedVals->finishedRamp);
+    }
+    else // start ramp time
+    {
+        rampedVals->setpoint = RampScale(rampedVals->prevSetpoint, rampedVals->currentSetpoint, MIN_SINT8_SETPNT, MAX_SINT8_SETPNT, &rampedVals->prevTime, rampedVals->rampStartTime, &rampedVals->finishedRamp);
+    }
+
+    // since setpoint is an int, make sure our difference isn't too small to change, and if it is increment/decrement by 1
+    if (rampedVals->setpoint == rampedVals->prevSetpoint && rampedVals->setpoint != rampedVals->currentSetpoint)
+    {
+        int16_t setpoint = rampedVals->setpoint;
+        if (rampedVals->setpoint < rampedVals->currentSetpoint)
+        {
+            IncrementValue(&setpoint, CMD_INCREMENT, 1, MIN_SINT8_SETPNT, MAX_SINT8_SETPNT);
+        }
+        else if (rampedVals->setpoint > rampedVals->currentSetpoint)
+        {
+            IncrementValue(&setpoint, CMD_DECREMENT, 1, MIN_SINT8_SETPNT, MAX_SINT8_SETPNT);
+        }
+        rampedVals->setpoint = setpoint;
+    }
+
+    // Apply proportional current to coils based on setpoint
+    if (rampedVals->setpoint > 0)
+    {
+        rampedVals->outputPositive_mA = (int16_t)scale(rampedVals->setpoint, 0, MAX_SINT8_SETPNT, rampedVals->posMin_mA, rampedVals->posMax_mA, TRUE);
+        rampedVals->outputNegative_mA = COIL_CURRENT_0_MA;
+    }
+    else if (rampedVals->setpoint < 0)
+    {
+        rampedVals->outputPositive_mA = COIL_CURRENT_0_MA;
+        rampedVals->outputNegative_mA = (int16_t)scale(rampedVals->setpoint, 0, MIN_SINT8_SETPNT, rampedVals->negMin_mA, rampedVals->negMax_mA, TRUE);
+    }
+    else
+    {
+        rampedVals->outputPositive_mA = COIL_CURRENT_0_MA;
+        rampedVals->outputNegative_mA = COIL_CURRENT_0_MA;
+    }
+
+    // canDebugBuf6[0] = rampedVals->setpoint;
+    // canDebugBuf6[1] = rampedVals->currentSetpoint;
+    // canDebugBuf6[2] = rampedVals->prevSetpoint;
+    // canDebugBuf6[3] = rampedVals->finishedRamp;3
+
+    rampedVals->prevSetpoint = rampedVals->setpoint; // make sure to update prevSetpoint
+}
+
 
 
 float MM7_C_YAW_RATE;
@@ -385,7 +654,7 @@ int main(int, char**)
     }
 
     // Show the window
-    ::ShowWindow(hwnd, SW_SHOWDEFAULT);
+    ::ShowWindow(hwnd, SW_MAXIMIZE);
     ::UpdateWindow(hwnd);
 
     // Setup Dear ImGui context
@@ -858,7 +1127,7 @@ int main(int, char**)
             // 3. Show a PID loop window
             if (show_PID_window)
             {
-                ImGui::SetNextWindowSize(ImVec2(350, 350), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Appearing);
                 ImGui::Begin("PID Window", &show_PID_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     if (ImGui::Button("Convert DBC to JSON"))
@@ -890,6 +1159,42 @@ int main(int, char**)
                         WriteOutFile(string, iv, path, crc, len);
                     }
                     ImGui::Text("Hello from PID window!");
+                    static int joystickVal = 0;
+                    ImGui::SliderInt("Joystick Val", &joystickVal, SCANRECO_INPUT_MIN, SCANRECO_INPUT_MAX);
+                    static int startRampTime = 0;
+                    ImGui::SliderInt("Start Ramp Time (ms)", &startRampTime, 0, 5000);
+                    static int stopRampTime = 0;
+                    ImGui::SliderInt("Stop Ramp Time (ms)", &stopRampTime, 0, 5000);
+
+                    static rampedOutput_ts aux1Vals;
+                    aux1Vals.controlModeMult = 100; // percentage to ramp to
+                    aux1Vals.deadband = 0;
+                    aux1Vals.joystickVal = joystickVal;
+                    aux1Vals.posMin_mA = 800;  // TODO - RM: MAKE THIS A PARAMETER
+                    aux1Vals.posMax_mA = 1600; // TODO - RM: MAKE THIS A PARAMETER
+                    aux1Vals.negMin_mA = 800;  // TODO - RM: MAKE THIS A PARAMETER
+                    aux1Vals.negMax_mA = 1600; // TODO - RM: MAKE THIS A PARAMETER
+                    aux1Vals.rampStartTime = startRampTime;
+                    aux1Vals.rampStopTime = stopRampTime;
+                    RampedOutput(&aux1Vals);
+                    int outputFwd;
+                    int outputRev;
+                    outputFwd = aux1Vals.outputPositive_mA;
+                    outputRev = aux1Vals.outputNegative_mA;
+
+                    if (outputFwd)
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(1.f, 0.f, 0.f));
+                    }
+                    else if (outputRev)
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(0.f, 1.f, 0.f));
+                    }
+                    else
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(1.f, 1.f, 1.f));
+                    }
+
                     const int NUM_VALUES = 90;
                     static float values[NUM_VALUES] = {};
                     static int values_offset = 0;
@@ -902,7 +1207,15 @@ int main(int, char**)
                     {
                         if (Timer(prevUpdateVal, updateValTimeout, true))
                         {
-                            values[counter] = io.MousePos.y;
+                            if (outputFwd)
+                            {
+                                values[counter] = outputFwd;
+                            }
+                            else
+                            {
+                                values[counter] = outputRev;
+                            }
+                            values[counter] = aux1Vals.setpoint;
                             if (counter < NUM_VALUES - 1)
                             {
                                 counter++;
@@ -921,7 +1234,7 @@ int main(int, char**)
                         average += values[n];
                     average /= (float)IM_ARRAYSIZE(values);
                     char overlay[32];
-                    sprintf(overlay, "avg %0.2f", average);
+                    sprintf(overlay, "val %.0f", values[counter]);
 
                     if (ImGui::BeginTable("table_nested1", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable))
                     {
@@ -931,9 +1244,9 @@ int main(int, char**)
 
                         ImGui::TableNextColumn();
 
-                        float minVal = getMin(values, NUM_VALUES);
-                        float maxVal = getMax(values, NUM_VALUES);
-                        const float PLOT_HEIGHT = 80.0f;
+                        float minVal = -127;// 0;// getMin(values, NUM_VALUES);
+                        float maxVal = 127;// aux1Vals.posMax_mA;// getMax(values, NUM_VALUES);
+                        const float PLOT_HEIGHT = 160.0f;
                         ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, minVal, maxVal, ImVec2(0, PLOT_HEIGHT));
 
 
@@ -972,6 +1285,7 @@ int main(int, char**)
                         //ImGui::TableNextColumn(); ImGui::Text("A1 Row 1");
                         ImGui::EndTable();
                     }
+                    ImGui::PopStyleColor();
                     //ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, getMin(values, NUM_VALUES), getMax(values, NUM_VALUES), ImVec2(0, 80.0f));
                     //ImGui::SameLine();
                     ImGui::Text("max");
