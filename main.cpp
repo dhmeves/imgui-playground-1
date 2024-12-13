@@ -557,14 +557,14 @@ void RampedOutput(rampedOutput_ts* rampedVals)
     }
     else
     {
-        bool inNeutral = true;
+        inNeutral = true;
         rampedVals->currentSetpoint = 0;
     }
 
     // Ramp setpoint
     if (inNeutral) // stop ramp time
     {
-        rampedVals->setpoint = RampScale(rampedVals->prevSetpoint, rampedVals->currentSetpoint, MIN_SINT8_SETPNT, MAX_SINT8_SETPNT, &rampedVals->prevTime, rampedVals->rampStartTime, &rampedVals->finishedRamp);
+        rampedVals->setpoint = RampScale(rampedVals->prevSetpoint, rampedVals->currentSetpoint, MIN_SINT8_SETPNT, MAX_SINT8_SETPNT, &rampedVals->prevTime, rampedVals->rampStopTime, &rampedVals->finishedRamp);
     }
     else // start ramp time
     {
