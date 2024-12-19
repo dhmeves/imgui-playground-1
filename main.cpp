@@ -402,6 +402,7 @@ double RampScale(double currentVal, double setpoint, double min, double max, uin
         rampTime = 1;
     }
     double maxIncrement = (int)(((maxVal - minVal) / rampTime)* (double)timeSince); // FLOATS MAKE NEGATIVE NUMBERS SAD!
+    printf("maxIncrement: %f\n", maxIncrement);
     double increment = setpoint - currentVal;
     double absIncrement = increment;
     bool goUp;
