@@ -43,6 +43,12 @@
     <Filter Include="Source Files\imguizmo">
       <UniqueIdentifier>{5a343728-5878-487e-b092-8e0ab7457d3c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\kalman">
+      <UniqueIdentifier>{53c4c910-3853-478b-a7b4-af12e2840da4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\kalman">
+      <UniqueIdentifier>{f72fa829-c135-4e12-b49c-0729f2f20f3f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -99,6 +105,9 @@
     <ClInclude Include="fsc\fsc_madgwick.h">
       <Filter>Header Files\fsc</Filter>
     </ClInclude>
+    <ClInclude Include="kalman\kalman.h">
+      <Filter>Header Files\kalman</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -146,9 +155,13 @@
     <ClCompile Include="fsc\fsc_madgwick.cpp">
       <Filter>Source Files\fsc</Filter>
     </ClCompile>
+    <ClCompile Include="kalman\kalman.cpp">
+      <Filter>Source Files\kalman</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.txt" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="pcan\lib\x86\PCANBasic.lib">

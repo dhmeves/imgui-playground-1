@@ -14,6 +14,7 @@
 #include <tchar.h>
 #include <math.h>
 #include <fstream>
+#include "kalman.h"
 
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
