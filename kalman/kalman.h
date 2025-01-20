@@ -7,11 +7,17 @@
 #include <chrono>
 
 
-static float _err_measure;
-static float _err_estimate;
-static float _q;
-static float _current_estimate = 0;
-static float _last_estimate = 0;
-static float _kalman_gain = 0;
 
-float updateEstimate(float mea);
+
+class Kalman
+{
+public:
+    float _err_measure;
+    float _err_estimate;
+    float _q;
+    float _current_estimate = 0;
+    float _last_estimate = 0;
+    float _kalman_gain = 0;
+
+    float updateEstimate(float mea);
+};

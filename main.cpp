@@ -22,6 +22,7 @@ bool useWindow = true;
 int gizmoCount = 1;
 static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
 
+Kalman kalman;
 
 float camDistance = 8.f;
 
@@ -119,7 +120,7 @@ fsc_mahony imu;
 fsc_madgwick imu;
 #endif
 
-ManualRead CAN;
+//ManualRead CAN;
 
 
 Quaternion imuC = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -711,7 +712,7 @@ int main(int, char**)
         //printf("YAW RATE: %f\tPITCH RATE: %f\tROLL RATE: %f\t\n", MM7_C_YAW_RATE, MM7_C_PITCH_RATE, MM7_C_ROLL_RATE);
         //printf("AY: %f\tAX: %f\tAZ: %f\t\n", MM7_C_AY, MM7_C_AX, MM7_C_AZ);
         //printf("\n~~~~~~~~~~~~~~~~~~~~\n");
-        TPCANStatus stsResult = CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp); // PCAN_ERROR_QRCVEMPTY;
+        TPCANStatus stsResult = /*CAN_Read(PcanHandle1, &CANMsg, &CANTimeStamp); //*/ PCAN_ERROR_QRCVEMPTY;
         if (stsResult != PCAN_ERROR_QRCVEMPTY)
         {
             switch (CANMsg.ID)
@@ -802,7 +803,7 @@ int main(int, char**)
 
         // START - IMGUI LOOP
         static uint64_t prevRenderTime = 0;
-        const uint64_t renderTimeout = 16;  //  16ms is about 60fps
+        const uint64_t renderTimeout = 10;  //  16ms is about 60fps
         static bool renderFrame = true;
         if (Timer(prevRenderTime, renderTimeout, true))
         {
@@ -1154,7 +1155,7 @@ int main(int, char**)
                     if (ImGui::Button("Create an arbitrary C-File!"))
                     {
                         std::string string = "test_check_check";
-                        uint8_t iv[] = {1,2};
+                        uint8_t iv[] = { 1,2 };
                         const char path[] = "test.c";
                         uint16_t crc = 1234;
                         long len = string.length();
@@ -1294,6 +1295,144 @@ int main(int, char**)
                 }
                 if (ImGui::Button("Close Me"))
                     show_PID_window = false;
+                ImGui::End();
+            }
+            static bool show_kalman_window = true;
+            // 3. Show a PID loop window
+            if (show_kalman_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Appearing);
+                ImGui::Begin("Kalman Window", &show_kalman_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    // MAKE SOME INITIAL VALUES FOR KALMAN FILTER
+                    kalman._err_measure = 2;
+                    kalman._err_estimate = 2;
+                    ImGui::SliderFloat("Kalman Q", &kalman._q, 0, 100);
+                    //kalman._q = 0.11;
+
+
+                    ImGui::Text("Hello from Kalman window!");
+                    static int rateVal = 0;
+                    const int MAX_RATE = 7000; // mV/s
+                    const int MAX_RATE_60FPS = 7000 / FRAME_RATE;
+                    ImGui::SliderInt("Joystick Val", &rateVal, 0, MAX_RATE_60FPS); // mV/s
+                    const int LVDT_MAX = 4500; // mV
+                    const int LVDT_MIN = 500; // mV
+                    static int dir_fwd = 1; // 1 = increasing, -1 = decreasing
+
+                    static int joystickVal = 0;
+                    joystickVal += rateVal * dir_fwd;
+                    if (joystickVal > LVDT_MAX)
+                        dir_fwd = -1;
+                    if (joystickVal < LVDT_MIN)
+                        dir_fwd = 1;
+
+                    //ImGui::SliderFloat("Kalman Q", &kalman._q, 0, 10);
+                    // fake noise generator
+                    int noiseLim = 250; // mV
+                    int noise = (micros()% noiseLim) - (noiseLim / 2); // -50 ~ +50
+                    int noisyJoystickVal = joystickVal + noise;
+
+                    ImGui::Text("noise: %d", (int)noise);
+
+                    const int NUM_VALUES = 500;
+                    static float values[NUM_VALUES] = {};
+                    static float kalmanFilterVals[NUM_VALUES] = {};
+                    static int values_offset = 0;
+                    float average = 0.0f;
+                    static int counter = 0;
+
+                    static uint64_t prevUpdateVal = 0;
+                    const uint64_t updateValTimeout = 50;
+                    if (io.MousePos.y > -10000 && io.MousePos.y < 10000)
+                    {
+                        if (Timer(prevUpdateVal, updateValTimeout, true))
+                        {
+                            values[counter] = noisyJoystickVal;
+                            kalmanFilterVals[counter] = kalman.updateEstimate(noisyJoystickVal);
+                            if (counter < NUM_VALUES - 1)
+                            {
+                                counter++;
+                            }
+                            // push everything back
+                            if (counter == NUM_VALUES - 1)
+                            {
+                                for (int i = 1; i < NUM_VALUES; i++)
+                                {
+                                    values[i - 1] = values[i];
+                                    kalmanFilterVals[i - 1] = kalmanFilterVals[i];
+                                }
+                            }
+                        }
+                    }
+                    for (int n = 0; n < IM_ARRAYSIZE(values); n++)
+                        average += values[n];
+                    average /= (float)IM_ARRAYSIZE(values);
+                    char overlay[32];
+                    sprintf(overlay, "val %.0f", values[counter]);
+                    char kalmanoverlay[32];
+                    sprintf(kalmanoverlay, "val %.0f", kalmanFilterVals[counter]);
+
+                    if (ImGui::BeginTable("table_nested1", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable))
+                    {
+                        ImGui::TableSetupColumn("Graph");
+                        ImGui::TableSetupColumn("Values");
+                        ImGui::TableHeadersRow();
+
+                        ImGui::TableNextColumn();
+
+                        float minVal = 0;// 0;// getMin(values, NUM_VALUES);
+                        float maxVal = 5000;// aux1Vals.posMax_mA;// getMax(values, NUM_VALUES);
+                        const float PLOT_HEIGHT = 200.0f;
+                        // raw value with noise
+                        ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, minVal, maxVal, ImVec2(0, PLOT_HEIGHT));
+
+                        // kalman filter
+                        ImGui::PlotLines("##Lines", kalmanFilterVals, IM_ARRAYSIZE(kalmanFilterVals), values_offset, kalmanoverlay, minVal, maxVal, ImVec2(0, PLOT_HEIGHT));
+
+
+                        //ImGui::Text("A0 Row 0");
+                        ImGui::TableNextColumn();
+                        //ImGui::Text("A1 Row 0");
+                        {
+                            float rows_height = 80 / 3;
+                            if (ImGui::BeginTable("table_nested2", 1, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable))
+                            {
+                                ImGui::TableSetupColumn("B0");
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                ImGui::Text("max: %d", (int)maxVal);
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                if (counter < NUM_VALUES - 1)
+                                {
+                                    ImGui::Text("val: %d", (int)values[counter - 1]);
+                                }
+                                else
+                                {
+                                    ImGui::Text("val: %d", (int)values[counter]);
+                                }
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                ImGui::Text("min: %d", (int)minVal);
+
+                                ImGui::EndTable();
+                            }
+                        }
+                        //ImGui::TableNextColumn(); ImGui::Text("A0 Row 1");
+                        //ImGui::TableNextColumn(); ImGui::Text("A1 Row 1");
+                        ImGui::EndTable();
+                    }
+                    //ImGui::PopStyleColor();
+                    //ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, getMin(values, NUM_VALUES), getMax(values, NUM_VALUES), ImVec2(0, 80.0f));
+                    //ImGui::SameLine();
+                    ImGui::Text("max");
+                }
+                if (ImGui::Button("Close Me"))
+                    show_kalman_window = false;
                 ImGui::End();
             }
 

@@ -1,7 +1,7 @@
 #include "kalman.h"
 #include "TimersAndCalculations.h"
 
-float updateEstimate(float mea)
+float Kalman::updateEstimate(float mea)
 {
     _kalman_gain = _err_estimate / (_err_estimate + _err_measure);
     _current_estimate = _last_estimate + _kalman_gain * (mea - _last_estimate);
