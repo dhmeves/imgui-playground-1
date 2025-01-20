@@ -1,12 +1,12 @@
 #include "kalman.h"
 #include "TimersAndCalculations.h"
 
-float Kalman::updateEstimate(float mea)
+float Kalman::updateEstimate( float mea, kalman_ts * filter )
 {
-    _kalman_gain = _err_estimate / (_err_estimate + _err_measure);
-    _current_estimate = _last_estimate + _kalman_gain * (mea - _last_estimate);
-    _err_estimate = (1.0f - _kalman_gain) * _err_estimate + fsc_fabs(_last_estimate - _current_estimate) * _q;
-    _last_estimate = _current_estimate;
+    filter->kalman_gain = filter->err_estimate / (filter->err_estimate + filter->err_measure);
+    filter->current_estimate = filter->last_estimate + filter->kalman_gain * (mea - filter->last_estimate);
+    filter->err_estimate = (1.0f - filter->kalman_gain) * filter->err_estimate + fsc_fabs(filter->last_estimate - filter->current_estimate) * filter->q;
+    filter->last_estimate = filter->current_estimate;
 
-    return _current_estimate;
+    return filter->current_estimate;
 }

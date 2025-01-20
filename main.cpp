@@ -803,7 +803,7 @@ int main(int, char**)
 
         // START - IMGUI LOOP
         static uint64_t prevRenderTime = 0;
-        const uint64_t renderTimeout = 10;  //  16ms is about 60fps
+        const uint64_t renderTimeout = FRAME_TIME;  //  16ms is about 60fps
         static bool renderFrame = true;
         if (Timer(prevRenderTime, renderTimeout, true))
         {
@@ -1301,27 +1301,34 @@ int main(int, char**)
             // 3. Show a PID loop window
             if (show_kalman_window)
             {
-                ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(1200, 750), ImGuiCond_Appearing);
                 ImGui::Begin("Kalman Window", &show_kalman_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
+                    static kalman_ts kalman_s;
+                    static bool firstLoop = true;
                     // MAKE SOME INITIAL VALUES FOR KALMAN FILTER
-                    kalman._err_measure = 2;
-                    kalman._err_estimate = 2;
-                    ImGui::SliderFloat("Kalman Q", &kalman._q, 0, 100);
+                    if (firstLoop)
+                    {
+                        firstLoop = false;
+                        kalman_s.err_measure = 1;
+                        kalman_s.err_estimate = 1;
+                    }
+                    ImGui::SliderFloat("Kalman Q", &kalman_s.q, 0, 1, "%.4f");
                     //kalman._q = 0.11;
 
 
-                    ImGui::Text("Hello from Kalman window!");
+                    //ImGui::Text("Hello from Kalman window!");
                     static int rateVal = 0;
                     const int MAX_RATE = 7000; // mV/s
                     const int MAX_RATE_60FPS = 7000 / FRAME_RATE;
-                    ImGui::SliderInt("Joystick Val", &rateVal, 0, MAX_RATE_60FPS); // mV/s
+                    ImGui::SliderInt("Joystick Val", &rateVal, 0, MAX_RATE, "%d mV/s"); // mV/s
+                    float rate = (float)rateVal / (float)FRAME_RATE;
                     const int LVDT_MAX = 4500; // mV
                     const int LVDT_MIN = 500; // mV
                     static int dir_fwd = 1; // 1 = increasing, -1 = decreasing
 
-                    static int joystickVal = 0;
-                    joystickVal += rateVal * dir_fwd;
+                    static float joystickVal = 0;
+                    joystickVal += rate * dir_fwd;
                     if (joystickVal > LVDT_MAX)
                         dir_fwd = -1;
                     if (joystickVal < LVDT_MIN)
@@ -1329,9 +1336,9 @@ int main(int, char**)
 
                     //ImGui::SliderFloat("Kalman Q", &kalman._q, 0, 10);
                     // fake noise generator
-                    int noiseLim = 250; // mV
-                    int noise = (micros()% noiseLim) - (noiseLim / 2); // -50 ~ +50
-                    int noisyJoystickVal = joystickVal + noise;
+                    int noiseLim = 250; // 
+                    int noise = (rand() % noiseLim) - (noiseLim / 2); // -50 ~ +50
+                    int noisyJoystickVal = (int)joystickVal + noise;
 
                     ImGui::Text("noise: %d", (int)noise);
 
@@ -1349,7 +1356,7 @@ int main(int, char**)
                         if (Timer(prevUpdateVal, updateValTimeout, true))
                         {
                             values[counter] = noisyJoystickVal;
-                            kalmanFilterVals[counter] = kalman.updateEstimate(noisyJoystickVal);
+                            kalmanFilterVals[counter] = kalman.updateEstimate(noisyJoystickVal, &kalman_s);
                             if (counter < NUM_VALUES - 1)
                             {
                                 counter++;
@@ -1383,7 +1390,7 @@ int main(int, char**)
 
                         float minVal = 0;// 0;// getMin(values, NUM_VALUES);
                         float maxVal = 5000;// aux1Vals.posMax_mA;// getMax(values, NUM_VALUES);
-                        const float PLOT_HEIGHT = 200.0f;
+                        const float PLOT_HEIGHT = 250.0f;
                         // raw value with noise
                         ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, minVal, maxVal, ImVec2(0, PLOT_HEIGHT));
 
