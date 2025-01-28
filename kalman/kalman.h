@@ -6,7 +6,7 @@
 #include <random>
 #include <chrono>
 
-typedef struct
+typedef struct KALMAN_T
 {
     float err_measure;
     float err_estimate;

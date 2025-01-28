@@ -55,6 +55,466 @@ static const float identityMatrix[16] =
     0.f, 0.f, 0.f, 1.f };
 
 
+const int MAX_NUM_SPNS = 32;
+const int BITS_PER_BYTE = 8;
+
+typedef enum
+{
+    TYPE_INT,
+    TYPE_FLOAT,
+    NUM_VAR_TYPES // Special value to represent the total number of DTC codes
+} var_type;
+
+typedef struct
+{
+    uint32_t spnNum;
+    uint8_t byte; // we start counting this at 1 instead of 0, since non-programmers made the J1939 standard...
+    uint8_t bit;  // we start counting this at 1 instead of 0, since non-programmers made the J1939 standard...
+    uint8_t len;
+    float scaling;
+    int32_t offset;
+    var_type varType;
+} spn_info;
+
+typedef struct
+{
+    uint8_t instanceNum;
+    uint16_t boxNum;
+    uint32_t pgn;
+    uint8_t prio;
+    uint8_t src;
+    uint16_t timeout;
+    uint16_t startTimeout;
+    uint32_t lenMax;
+    uint8_t data[8];
+    spn_info spns[MAX_NUM_SPNS];
+} can_isobus_info;
+
+
+/**
+ * @brief Extracts a value of type uint16 at a given location and length from an array of uint8's, returns success
+ *
+ * @param[in] telegram[] array of bytes from CAN Telegram
+ * @param[in] sizeOfTelegram size of array (number of elements)
+ * @param[inout] output* extracted value
+ * @param[in] spnConfig struct of type SPN_Config, location and length of requested value in array
+ * @return success status of block.
+ */
+
+int ExtractValueFromCanTelegram(can_isobus_info messageData, int spnInfoIndex, uint64_t* output)
+{
+    uint8_t byteIndex = messageData.spns[spnInfoIndex].byte - 1;                                                              // These values start from 1, not 0
+    uint8_t bitIndex = messageData.spns[spnInfoIndex].bit - 1;                                                                // These values start from 1, not 0
+    if ((BITS_PER_BYTE * byteIndex + bitIndex + messageData.spns[spnInfoIndex].len) > (messageData.lenMax * BITS_PER_BYTE))   // Check if we are asking for something outside of telegram's allocation
+        return -1;                                                                                                            // Return FSC_ERR if we are going to overrun the array
+
+    uint64_t mask = 0;
+    uint8_t i = 0;
+    for (i; i < messageData.spns[spnInfoIndex].len; i++)
+    {
+        mask |= (1 << i);
+    }
+    uint64_t val = 0;
+    uint8_t numBytes = 1 + (bitIndex + messageData.spns[spnInfoIndex].len - 1) / BITS_PER_BYTE; // How many bytes does this information span?
+    i = 0;
+    for (i; i < numBytes; i++)
+    {
+        val |= messageData.data[byteIndex + i] << (BITS_PER_BYTE * i);
+    }
+    if (numBytes == 1) // If we are contained in one single byte, little-endianess makes things a little stupid, so read backwards
+    {
+        int8_t byteMaskShift = 8 - (bitIndex + messageData.spns[spnInfoIndex].len);
+        *output = (val >> byteMaskShift) & mask;
+    }
+    else
+    {
+        *output = (val >> bitIndex) & mask;
+    }
+    return 0;
+}
+
+int InsertValueToCanTelegram(can_isobus_info* messageData, int spnInfoIndex, uint64_t input)
+{
+    uint8_t byteIndex = messageData->spns[spnInfoIndex].byte - 1;                                                               // These values start from 1, not 0
+    uint8_t bitIndex = messageData->spns[spnInfoIndex].bit - 1;                                                                 // These values start from 1, not 0
+    if ((BITS_PER_BYTE * byteIndex + bitIndex + messageData->spns[spnInfoIndex].len) > (messageData->lenMax * BITS_PER_BYTE)) // Check if we are asking for something outside of telegram's allocation
+        return -1;                                                                                                              // Return FSC_ERR if we are going to overrun the array
+
+    uint64_t mask = 0;
+    uint8_t i = 0;
+    for (i; i < messageData->spns[spnInfoIndex].len; i++)
+    {
+        mask |= (1 << i);
+    }
+    uint64_t val = 0;
+    uint8_t numBytes = 1 + (bitIndex + messageData->spns[spnInfoIndex].len - 1) / BITS_PER_BYTE; // How many bytes does this information span?
+    i = 0;
+    for (i; i < numBytes; i++)
+    {
+        uint8_t byteMask = 0;
+        uint8_t byteInput = 0;
+        uint8_t invMask = 0;
+        int8_t byteMaskShift = messageData->spns[spnInfoIndex].len - ((BITS_PER_BYTE * (numBytes - i)) - bitIndex); // figure out how many bits to shift to convert a potential value over 8 bits into chunks of 8 bits
+        if (byteMaskShift > 0)
+        {
+            byteMask = (mask >> byteMaskShift);
+            byteInput = (input >> byteMaskShift) & byteMask;
+        }
+        else // if shift is negative, make it positive and shift left instead
+        {
+            byteMaskShift *= -1;
+            byteMask = (mask << byteMaskShift);
+            byteInput = (input << byteMaskShift) & byteMask;
+        }
+        invMask = ~byteMask;
+        messageData->data[byteIndex + i] &= invMask; // remove previous data in the location we are writing to
+        messageData->data[byteIndex + i] |= byteInput;
+    }
+    // *output = (val >> bitIndex) & mask;
+    return 0;
+}
+
+typedef enum
+{
+    SAFOUT_DEBUG1_INITIALIZED,
+    SAFOUT_DEBUG1_CONFIGURED,
+    SAFOUT_DEBUG1_LOCKED_CHNL,
+    SAFOUT_DEBUG1_IDEV_CMP_HSLS,
+    SAFOUT_DEBUG1_ACTIVE_OUT1,
+    SAFOUT_DEBUG1_ACTIVE_OUT2,
+    SAFOUT_DEBUG1_ACTIVE_OUT3,
+    SAFOUT_DEBUG1_ACTIVE_OUT4,
+    SAFOUT_DEBUG1_IGNORE_ERR,
+    SAFOUT_DEBUG1_ISET_COM,
+    SAFOUT_DEBUG1_ISET_OUT1,
+    SAFOUT_DEBUG1_ISET_OUT2,
+    SAFOUT_DEBUG1_ISET_OUT3,
+    SAFOUT_DEBUG1_ISET_OUT4
+} SAFOUT_DEBUG1_SPNs;
+typedef enum
+{
+    SAFOUT_DEBUG2_DFC_OUT1,
+    SAFOUT_DEBUG2_DFC_OUT2,
+    SAFOUT_DEBUG2_DFC_OUT3,
+    SAFOUT_DEBUG2_DFC_OUT4,
+    SAFOUT_DEBUG2_IMEAS_OUT1,
+    SAFOUT_DEBUG2_IMEAS_OUT2,
+    SAFOUT_DEBUG2_IMEAS_OUT3,
+    SAFOUT_DEBUG2_IMEAS_OUT4,
+    SAFOUT_DEBUG2_IMEAS_OUTCOMM,
+} SAFOUT_DEBUG2_SPNs;
+
+typedef enum
+{
+    SAFOUT_DFC_NO_FAULT,
+    SAFOUT_DFC_SCB,
+    SAFOUT_DFC_SCG,
+    SAFOUT_DFC_OL,
+    SAFOUT_DFC_OC
+} safout_dfc_te;
+
+typedef struct
+{
+    safout_dfc_te dfcOut1;
+    safout_dfc_te dfcOut2;
+    safout_dfc_te dfcOut3;
+    safout_dfc_te dfcOut4;
+} safout_dfc_ts;
+
+/* safout status flags */
+#define SAFOUT_INITIALIZED_MASK 0x0001u /* initialization after startup */
+#define SAFOUT_CONFIGURED_MASK 0x0002u  /* configured channel */
+#define SAFOUT_ACTIVEOUT1_MASK 0x0010u  /* activated outputs */
+#define SAFOUT_ACTIVEOUT2_MASK 0x0020u
+#define SAFOUT_ACTIVEOUT3_MASK 0x0040u
+#define SAFOUT_ACTIVEOUT4_MASK 0x0080u
+#define SAFOUT_LOCKEDCHNL_MASK 0x0100u  /* locked channel */
+#define SAFOUT_IDEVCMPHSLS_MASK 0x2000u /* maximal current deviation of the HS/LS compare is exceeded */
+#define SAFOUT_IGNOREERROR_MASK 0x8000u /* ignore non critical faults  */
+
+typedef struct
+{
+    bool initialized;
+    bool configured;
+    bool activeOut1;
+    bool activeOut2;
+    bool activeOut3;
+    bool activeOut4;
+    bool lockedChnl;
+    bool iDevCmpHSLS;
+    bool ignoreError;
+} safout_status_ts;
+
+//can_isobus_info INFO_SAFOUT_DEBUG1 = {
+//    1,
+//    3,
+//    3,
+//    0x0000,
+//    0x00,
+//    500,
+//    5000,
+//    8,
+//    {
+//        {0, 1, 1, 1, 1, 0, TYPE_INT},
+//        {0, 1, 2, 1, 1, 0, TYPE_INT},
+//        {0, 1, 3, 1, 1, 0, TYPE_INT},
+//        {0, 1, 4, 1, 1, 0, TYPE_INT},
+//        {0, 1, 5, 1, 1, 0, TYPE_INT},
+//        {0, 1, 6, 1, 1, 0, TYPE_INT},
+//        {0, 1, 7, 1, 1, 0, TYPE_INT},
+//        {0, 1, 8, 1, 1, 0, TYPE_INT},
+//        {0, 2, 1, 1, 4, 0, TYPE_INT},
+//        {0, 2, 5, 10, 4, 0, TYPE_INT},
+//        {0, 3, 7, 10, 4, 0, TYPE_INT},
+//        {0, 5, 1, 10, 4, 0, TYPE_INT},
+//        {0, 6, 3, 10, 4, 0, TYPE_INT},
+//        {0, 7, 5, 10, 4, 0, TYPE_INT}} };
+//
+//can_isobus_info INFO_SAFOUT_DEBUG2 = {
+//    1,
+//    3,
+//    3,
+//    0x0000,
+//    0x00,
+//    500,
+//    5000,
+//    8,
+//    {
+//        {0, 1, 1, 3, 1, 0, TYPE_INT},
+//        {0, 1, 4, 3, 1, 0, TYPE_INT},
+//        {0, 1, 7, 3, 1, 0, TYPE_INT},
+//        {0, 2, 2, 3, 1, 0, TYPE_INT},
+//        {0, 2, 5, 10, 4, 0, TYPE_INT},
+//        {0, 3, 7, 10, 4, 0, TYPE_INT},
+//        {0, 5, 1, 10, 4, 0, TYPE_INT},
+//        {0, 6, 3, 10, 4, 0, TYPE_INT},
+//        {0, 7, 5, 10, 4, 0, TYPE_INT}} };
+
+can_isobus_info INFO_SAFOUT_DEBUG1 = {
+    .instanceNum = 1,
+    .boxNum = 3,
+    .pgn = 0x0000,
+    .prio = 3,
+    .src = 0x00,
+    .timeout = 500,
+    .startTimeout = 5000,
+    .lenMax = 8,
+    .spns = {
+        {.spnNum = 0, .byte = 1, .bit = 1, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 2, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 3, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 4, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 5, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 6, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 7, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 8, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 1, .len = 1, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 7, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 5, .bit = 1, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 6, .bit = 3, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 7, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT}} };
+
+can_isobus_info INFO_SAFOUT_DEBUG2 = {
+    .instanceNum = 1,
+    .boxNum = 3,
+    .pgn = 0x0000,
+    .prio = 3,
+    .src = 0x00,
+    .timeout = 500,
+    .startTimeout = 5000,
+    .lenMax = 8,
+    .spns = {
+        {.spnNum = 0, .byte = 1, .bit = 1, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 4, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 7, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 2, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 7, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 5, .bit = 1, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 6, .bit = 3, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 7, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT}} };
+
+typedef struct bds_safout_t {
+    int chnl_u16 = 0;
+    int status_b16 = 0;
+    int setOutCo_u16 = 0;
+    int setOut1_u16 = 0;
+    int setOut2_u16 = 0;
+    int setOut3_u16 = 0;
+    int setOut4_u16 = 0;
+    int iOutCo_u16 = 0;
+    int iOut1_u16 = 0;
+    int iOut2_u16 = 0;
+    int iOut3_u16 = 0;
+    int iOut4_u16 = 0;
+    int iOutSum_u16 = 0;
+    int diag_u32 = 0;
+    int diag2_u32 = 0;
+    int stDFC_u16 = 0;
+    int stDFC_iDev_u16 = 0;
+    int testSts_u16 = 0;
+} bds_safout_ts;
+
+
+typedef enum
+{
+    RBR_CAN_1_E = 0
+    , RBR_CAN_2_E
+    , RBR_CAN_3_E
+    , RBR_CAN_4_E
+    , RBR_CAN_NBR_E
+} rbr_can_Chnl_te;
+
+#define bds_can_Chnl_te rbr_can_Chnl_te
+
+#define uint64 uint64_t
+#define sint64 int64_t
+#define uint32 uint32_t
+#define sint32 int32_t
+#define uint16 uint16_t
+#define sint16 int16_t
+#define uint8 uint8_t
+#define sint8 int8_t
+
+
+void ScaleAndOffsetForTx_Float(uint64 inRawVal, spn_info spn, float* outVal)
+{
+    *outVal = (float)((inRawVal - spn.offset) / spn.scaling);
+}
+
+void ScaleAndOffsetForTx_Int(uint64 inRawVal, spn_info spn, int* outVal)
+{
+    *outVal = (int)((inRawVal - spn.offset) / spn.scaling);
+}
+
+void ScaleAndOffsetForTx(uint64 inRawVal, spn_info spn, void* outVal)
+{
+    switch (spn.varType)
+    {
+    case TYPE_INT:
+        ScaleAndOffsetForTx_Int(inRawVal, spn, (int*)outVal);
+        break;
+    case TYPE_FLOAT:
+        ScaleAndOffsetForTx_Float(inRawVal, spn, (float*)outVal);
+        break;
+    default: // do nothing for now...
+        break;
+    }
+}
+
+#define SAFOUT_SCB     0x0001u
+#define SAFOUT_SCG     0x0002u
+#define SAFOUT_OL     0x0004u
+#define SAFOUT_OC     0x0008u
+
+void ExtractSafoutDFC(uint32 safoutDiag, safout_dfc_ts* safoutDFCs_s)
+{
+    if (safoutDiag & SAFOUT_SCB)
+        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_SCB;
+    else if (safoutDiag & SAFOUT_SCG)
+        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_SCG;
+    else if (safoutDiag & SAFOUT_OL)
+        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_OL;
+    else if (safoutDiag & SAFOUT_OC)
+        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_OC;
+    else
+        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_NO_FAULT;
+}
+
+void ExtractSafoutStatusBits(uint16 status, safout_status_ts* statusStruct)
+{
+    statusStruct->initialized = (status & SAFOUT_INITIALIZED_MASK) ? TRUE : FALSE;
+    statusStruct->configured = (status & SAFOUT_CONFIGURED_MASK) ? TRUE : FALSE;
+    statusStruct->activeOut1 = (status & SAFOUT_ACTIVEOUT1_MASK) ? TRUE : FALSE;
+    statusStruct->activeOut2 = (status & SAFOUT_ACTIVEOUT2_MASK) ? TRUE : FALSE;
+    statusStruct->activeOut3 = (status & SAFOUT_ACTIVEOUT3_MASK) ? TRUE : FALSE;
+    statusStruct->activeOut4 = (status & SAFOUT_ACTIVEOUT4_MASK) ? TRUE : FALSE;
+    statusStruct->lockedChnl = (status & SAFOUT_LOCKEDCHNL_MASK) ? TRUE : FALSE;
+    statusStruct->iDevCmpHSLS = (status & SAFOUT_IDEVCMPHSLS_MASK) ? TRUE : FALSE;
+    statusStruct->ignoreError = (status & SAFOUT_IGNOREERROR_MASK) ? TRUE : FALSE;
+}
+
+void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te canChnl, uint32_t canID1, uint32_t canID2, uint8_t canFormat)
+{
+    can_isobus_info tempInfoSafoutDebug1 = INFO_SAFOUT_DEBUG1;
+    can_isobus_info tempInfoSafoutDebug2 = INFO_SAFOUT_DEBUG2;
+    safout_status_ts tempStatus_s;
+    safout_dfc_ts tempDFCs_s;
+
+    ExtractSafoutStatusBits(outputPinStatus.status_b16, &tempStatus_s);
+    ExtractSafoutDFC(outputPinStatus.diag_u32, &tempDFCs_s);
+
+    int tempScaledVal = 0;
+    ScaleAndOffsetForTx(tempStatus_s.initialized, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_INITIALIZED], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_INITIALIZED, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.configured, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_CONFIGURED], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_CONFIGURED, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.lockedChnl, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_LOCKED_CHNL], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_LOCKED_CHNL, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.iDevCmpHSLS, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IDEV_CMP_HSLS], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IDEV_CMP_HSLS, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.ignoreError, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IGNORE_ERR], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IGNORE_ERR, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.activeOut1, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT1], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT1, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.activeOut2, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT2], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT2, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.activeOut3, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT3], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT3, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempStatus_s.activeOut4, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT4], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT4, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.setOutCo_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_COM], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_COM, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.setOut1_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT1], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT1, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.setOut2_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT2], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT2, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.setOut3_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT3], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT3, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.setOut4_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT4], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT4, (uint64)tempScaledVal);
+    //bds_can_sendData(BDS_CAN_3_D, canID1, canFormat, 8, &tempInfoSafoutDebug1.data);
+    ImGui::Text("Debug1:");
+    ImGui::SameLine();
+    for (int i = 0; i < 8; i++)
+    {
+        ImGui::Text("%02X ", tempInfoSafoutDebug1.data[i]);
+        ImGui::SameLine();
+    }
+    ImGui::Text("");
+    ScaleAndOffsetForTx(tempDFCs_s.dfcOut1, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT1], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT1, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempDFCs_s.dfcOut2, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT2], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT2, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempDFCs_s.dfcOut3, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT3], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT3, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(tempDFCs_s.dfcOut4, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT4], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT4, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.iOut1_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT1], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT1, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.iOut2_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT2], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT2, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.iOut3_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT3], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT3, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.iOut4_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT4], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT4, (uint64)tempScaledVal);
+    ScaleAndOffsetForTx(outputPinStatus.iOutCo_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUTCOMM], &tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUTCOMM, (uint64)tempScaledVal);
+    //bds_can_sendData(BDS_CAN_3_D, canID2, canFormat, 8, &tempInfoSafoutDebug2.data);
+    ImGui::Text("Debug2:");
+    ImGui::SameLine();
+    for (int i = 0; i < 8; i++)
+    {
+        ImGui::Text("%02X ", tempInfoSafoutDebug2.data[i]);
+        ImGui::SameLine();
+    }
+}
+
+
+
+
+
 void EditTransform(float* cameraView, float* cameraProjection, float* matrix, bool editTransformDecomposition);
 void Perspective(float fovyInDegrees, float aspectRatio, float znear, float zfar, float* m16);
 void Frustum(float left, float right, float bottom, float top, float znear, float zfar, float* m16);
@@ -1443,11 +1903,27 @@ int main(int, char**)
                 ImGui::End();
             }
 
-
-
-
-
-
+            static bool show_CAN_endianess_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_CAN_endianess_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(1200, 750), ImGuiCond_Appearing);
+                ImGui::Begin("CAN Endianness", &show_CAN_endianess_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    bds_safout_ts outputPinStatus;
+                    ImGui::SliderInt("iOut1", &outputPinStatus.iOut1_u16, 0, 4000);
+                    ImGui::SliderInt("iOut2", &outputPinStatus.iOut2_u16, 0, 4000);
+                    ImGui::SliderInt("iOut3", &outputPinStatus.iOut3_u16, 0, 4000);
+                    ImGui::SliderInt("iOut4", &outputPinStatus.iOut4_u16, 0, 4000);
+                    ImGui::SliderInt("iOutCo", &outputPinStatus.iOutCo_u16, 0, 4000);
+                    ImGui::SliderInt("iSet1", &outputPinStatus.setOut1_u16, 0, 4000);
+                    ImGui::SliderInt("iSet2", &outputPinStatus.setOut2_u16, 0, 4000);
+                    ImGui::SliderInt("iSet3", &outputPinStatus.setOut3_u16, 0, 4000);
+                    ImGui::SliderInt("iSet4", &outputPinStatus.setOut4_u16, 0, 4000);
+                    Send_SAFOUT_DebugToCanTX(outputPinStatus, RBR_CAN_1_E, 0x69, 0x420, 0);
+                }
+                ImGui::End();
+            }
 
             // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
             if (show_demo_window)
