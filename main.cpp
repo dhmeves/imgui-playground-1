@@ -101,38 +101,98 @@ typedef struct
  * @return success status of block.
  */
 
-int ExtractValueFromCanTelegram(can_isobus_info messageData, int spnInfoIndex, uint64_t* output)
-{
-    uint8_t byteIndex = messageData.spns[spnInfoIndex].byte - 1;                                                              // These values start from 1, not 0
-    uint8_t bitIndex = messageData.spns[spnInfoIndex].bit - 1;                                                                // These values start from 1, not 0
-    if ((BITS_PER_BYTE * byteIndex + bitIndex + messageData.spns[spnInfoIndex].len) > (messageData.lenMax * BITS_PER_BYTE))   // Check if we are asking for something outside of telegram's allocation
-        return -1;                                                                                                            // Return FSC_ERR if we are going to overrun the array
+//int ExtractValueFromCanTelegram(can_isobus_info messageData, int spnInfoIndex, uint64_t* output)
+//{
+//    uint8_t byteIndex = messageData.spns[spnInfoIndex].byte - 1;                                                              // These values start from 1, not 0
+//    uint8_t bitIndex = messageData.spns[spnInfoIndex].bit - 1;                                                                // These values start from 1, not 0
+//    if ((BITS_PER_BYTE * byteIndex + bitIndex + messageData.spns[spnInfoIndex].len) > (messageData.lenMax * BITS_PER_BYTE))   // Check if we are asking for something outside of telegram's allocation
+//        return -1;                                                                                                            // Return FSC_ERR if we are going to overrun the array
+//
+//    uint64_t mask = 0;
+//    uint8_t i = 0;
+//    for (i; i < messageData.spns[spnInfoIndex].len; i++)
+//    {
+//        mask |= (1 << i);
+//    }
+//    uint64_t val = 0;
+//    uint8_t numBytes = 1 + (bitIndex + messageData.spns[spnInfoIndex].len - 1) / BITS_PER_BYTE; // How many bytes does this information span?
+//    i = 0;
+//    for (i; i < numBytes; i++)
+//    {
+//        val |= messageData.data[byteIndex + i] << (BITS_PER_BYTE * i);
+//    }
+//    if (numBytes == 1) // If we are contained in one single byte, little-endianess makes things a little stupid, so read backwards
+//    {
+//        int8_t byteMaskShift = 8 - (bitIndex + messageData.spns[spnInfoIndex].len);
+//        *output = (val >> byteMaskShift) & mask;
+//    }
+//    else
+//    {
+//        *output = (val >> bitIndex) & mask;
+//    }
+//    return 0;
+//}
 
-    uint64_t mask = 0;
-    uint8_t i = 0;
-    for (i; i < messageData.spns[spnInfoIndex].len; i++)
-    {
-        mask |= (1 << i);
+int InsertValueToCanTelegram(can_isobus_info* messageData, int spnInfoIndex, uint64_t input)
+{
+    // Extract SPN details
+    uint8_t byteIndex = messageData->spns[spnInfoIndex].byte - 1; // Convert to zero-based index
+    uint8_t bitIndex = messageData->spns[spnInfoIndex].bit - 1;   // Convert to zero-based index
+    uint8_t length = messageData->spns[spnInfoIndex].len;         // Length in bits
+
+    // Check if the requested operation exceeds message boundaries
+    if ((BITS_PER_BYTE * byteIndex + bitIndex + length) > (messageData->lenMax * BITS_PER_BYTE)) {
+        return -1; // Out of bounds error
     }
-    uint64_t val = 0;
-    uint8_t numBytes = 1 + (bitIndex + messageData.spns[spnInfoIndex].len - 1) / BITS_PER_BYTE; // How many bytes does this information span?
-    i = 0;
-    for (i; i < numBytes; i++)
-    {
-        val |= messageData.data[byteIndex + i] << (BITS_PER_BYTE * i);
+
+    // Mask the input value to ensure it fits within the required bit length
+    uint64_t mask = (1ULL << length) - 1;
+    input &= mask;
+
+    // Iterate over each bit in the input value
+    for (uint8_t i = 0; i < length; i++) {
+        uint8_t bitPosition = bitIndex + i;                          // Absolute bit position from the start byte
+        uint8_t targetByte = byteIndex + (bitPosition / BITS_PER_BYTE); // Target byte index
+        uint8_t targetBit = bitPosition % BITS_PER_BYTE;             // Bit position within the byte
+
+        // Clear the bit in the CAN message
+        messageData->data[targetByte] &= ~(1 << targetBit);
+
+        // Insert the bit from the input value
+        messageData->data[targetByte] |= ((input >> i) & 1) << targetBit;
     }
-    if (numBytes == 1) // If we are contained in one single byte, little-endianess makes things a little stupid, so read backwards
-    {
-        int8_t byteMaskShift = 8 - (bitIndex + messageData.spns[spnInfoIndex].len);
-        *output = (val >> byteMaskShift) & mask;
-    }
-    else
-    {
-        *output = (val >> bitIndex) & mask;
-    }
-    return 0;
+    return 0; // Success
 }
 
+
+int ExtractValueFromCanTelegram(can_isobus_info messageData, int spnInfoIndex, uint64_t* output) {
+    // Extract SPN details
+    uint8_t byteIndex = messageData.spns[spnInfoIndex].byte - 1; // Convert to zero-based index
+    uint8_t bitIndex = messageData.spns[spnInfoIndex].bit - 1;   // Convert to zero-based index
+    uint8_t length = messageData.spns[spnInfoIndex].len;         // Length in bits
+
+    // Bounds check to ensure we do not exceed message size
+    if ((BITS_PER_BYTE * byteIndex + bitIndex + length) > (messageData.lenMax * BITS_PER_BYTE)) {
+        return -1; // Out of bounds error
+    }
+
+    uint64_t value = 0;
+
+    // Extract bits little-endian style
+    uint8_t bitOffset = bitIndex;
+    for (uint8_t i = 0; i < length; i++) {
+        uint8_t bitPosition = bitOffset + i;                        // Absolute bit position from start byte
+        uint8_t sourceByte = byteIndex + (bitPosition / BITS_PER_BYTE); // Byte index in the message
+        uint8_t sourceBit = bitPosition % BITS_PER_BYTE;            // Bit position within the byte
+
+        // Extract bit and insert into output
+        value |= ((messageData.data[sourceByte] >> sourceBit) & 1) << i;
+    }
+
+    *output = value;
+    return 0; // Success
+}
+/*
 int InsertValueToCanTelegram(can_isobus_info* messageData, int spnInfoIndex, uint64_t input)
 {
     uint8_t byteIndex = messageData->spns[spnInfoIndex].byte - 1;                                                               // These values start from 1, not 0
@@ -172,7 +232,7 @@ int InsertValueToCanTelegram(can_isobus_info* messageData, int spnInfoIndex, uin
     }
     // *output = (val >> bitIndex) & mask;
     return 0;
-}
+}*/
 
 typedef enum
 {
@@ -204,14 +264,14 @@ typedef enum
     SAFOUT_DEBUG2_IMEAS_OUTCOMM,
 } SAFOUT_DEBUG2_SPNs;
 
-typedef enum
+enum safout_dfc_te : int
 {
     SAFOUT_DFC_NO_FAULT,
     SAFOUT_DFC_SCB,
     SAFOUT_DFC_SCG,
     SAFOUT_DFC_OL,
     SAFOUT_DFC_OC
-} safout_dfc_te;
+};
 
 typedef struct
 {
@@ -245,50 +305,6 @@ typedef struct
     bool ignoreError;
 } safout_status_ts;
 
-//can_isobus_info INFO_SAFOUT_DEBUG1 = {
-//    1,
-//    3,
-//    3,
-//    0x0000,
-//    0x00,
-//    500,
-//    5000,
-//    8,
-//    {
-//        {0, 1, 1, 1, 1, 0, TYPE_INT},
-//        {0, 1, 2, 1, 1, 0, TYPE_INT},
-//        {0, 1, 3, 1, 1, 0, TYPE_INT},
-//        {0, 1, 4, 1, 1, 0, TYPE_INT},
-//        {0, 1, 5, 1, 1, 0, TYPE_INT},
-//        {0, 1, 6, 1, 1, 0, TYPE_INT},
-//        {0, 1, 7, 1, 1, 0, TYPE_INT},
-//        {0, 1, 8, 1, 1, 0, TYPE_INT},
-//        {0, 2, 1, 1, 4, 0, TYPE_INT},
-//        {0, 2, 5, 10, 4, 0, TYPE_INT},
-//        {0, 3, 7, 10, 4, 0, TYPE_INT},
-//        {0, 5, 1, 10, 4, 0, TYPE_INT},
-//        {0, 6, 3, 10, 4, 0, TYPE_INT},
-//        {0, 7, 5, 10, 4, 0, TYPE_INT}} };
-//
-//can_isobus_info INFO_SAFOUT_DEBUG2 = {
-//    1,
-//    3,
-//    3,
-//    0x0000,
-//    0x00,
-//    500,
-//    5000,
-//    8,
-//    {
-//        {0, 1, 1, 3, 1, 0, TYPE_INT},
-//        {0, 1, 4, 3, 1, 0, TYPE_INT},
-//        {0, 1, 7, 3, 1, 0, TYPE_INT},
-//        {0, 2, 2, 3, 1, 0, TYPE_INT},
-//        {0, 2, 5, 10, 4, 0, TYPE_INT},
-//        {0, 3, 7, 10, 4, 0, TYPE_INT},
-//        {0, 5, 1, 10, 4, 0, TYPE_INT},
-//        {0, 6, 3, 10, 4, 0, TYPE_INT},
-//        {0, 7, 5, 10, 4, 0, TYPE_INT}} };
 
 can_isobus_info INFO_SAFOUT_DEBUG1 = {
     .instanceNum = 1,
@@ -300,20 +316,20 @@ can_isobus_info INFO_SAFOUT_DEBUG1 = {
     .startTimeout = 5000,
     .lenMax = 8,
     .spns = {
-        {.spnNum = 0, .byte = 1, .bit = 1, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 2, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 3, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 4, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 5, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 6, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 7, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 8, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 2, .bit = 1, .len = 1, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 2, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 3, .bit = 7, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 5, .bit = 1, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 6, .bit = 3, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 7, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT}} };
+        {.spnNum = 1, .byte = 1, .bit = 1, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 2, .byte = 1, .bit = 2, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 3, .byte = 1, .bit = 3, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 4, .byte = 1, .bit = 4, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 5, .byte = 1, .bit = 5, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 6, .byte = 1, .bit = 6, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 7, .byte = 1, .bit = 7, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 8, .byte = 1, .bit = 8, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 9, .byte = 2, .bit = 1, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 10, .byte = 2, .bit = 2, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 11, .byte = 3, .bit = 4, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 12, .byte = 4, .bit = 6, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 13, .byte = 5, .bit = 8, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 14, .byte = 7, .bit = 2, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT}} };
 
 can_isobus_info INFO_SAFOUT_DEBUG2 = {
     .instanceNum = 1,
@@ -325,15 +341,15 @@ can_isobus_info INFO_SAFOUT_DEBUG2 = {
     .startTimeout = 5000,
     .lenMax = 8,
     .spns = {
-        {.spnNum = 0, .byte = 1, .bit = 1, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 4, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 1, .bit = 7, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 2, .bit = 2, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 2, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 3, .bit = 7, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 5, .bit = 1, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 6, .bit = 3, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
-        {.spnNum = 0, .byte = 7, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT}} };
+        {.spnNum = 15, .byte = 1, .bit = 1, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 16, .byte = 1, .bit = 4, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 17, .byte = 1, .bit = 7, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 18, .byte = 2, .bit = 2, .len = 3, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 19, .byte = 2, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 20, .byte = 3, .bit = 7, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 21, .byte = 5, .bit = 1, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 22, .byte = 6, .bit = 3, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 23, .byte = 7, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT}} };
 
 typedef struct bds_safout_t {
     int chnl_u16 = 0;
@@ -403,6 +419,31 @@ void ScaleAndOffsetForTx(uint64 inRawVal, spn_info spn, void* outVal)
     }
 }
 
+void ScaleAndOffsetForRx_Float(uint64 inRawVal, spn_info spn, float* outVal)
+{
+    *outVal = (float)(inRawVal * spn.scaling + spn.offset);
+}
+
+void ScaleAndOffsetForRx_Int(uint64 inRawVal, spn_info spn, int* outVal)
+{
+    *outVal = (int)(inRawVal * (int)spn.scaling + spn.offset);
+}
+
+void ScaleAndOffsetForRx(uint64 inRawVal, spn_info spn, void* outVal)
+{
+    switch (spn.varType)
+    {
+    case TYPE_INT:
+        ScaleAndOffsetForRx_Int(inRawVal, spn, (int*)outVal);
+        break;
+    case TYPE_FLOAT:
+        ScaleAndOffsetForRx_Float(inRawVal, spn, (float*)outVal);
+        break;
+    default: // do nothing for now...
+        break;
+    }
+}
+
 #define SAFOUT_SCB     0x0001u
 #define SAFOUT_SCG     0x0002u
 #define SAFOUT_OL     0x0004u
@@ -413,13 +454,46 @@ void ExtractSafoutDFC(uint32 safoutDiag, safout_dfc_ts* safoutDFCs_s)
     if (safoutDiag & SAFOUT_SCB)
         safoutDFCs_s->dfcOut1 = SAFOUT_DFC_SCB;
     else if (safoutDiag & SAFOUT_SCG)
-        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_SCG;
+        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_SCG;
     else if (safoutDiag & SAFOUT_OL)
-        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_OL;
+        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_OL;
     else if (safoutDiag & SAFOUT_OC)
+        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_OC;
+    else
+        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_NO_FAULT;
+
+    if (safoutDiag & SAFOUT_SCB << 4)
+        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_SCB;
+    else if (safoutDiag & SAFOUT_SCG << 4)
+        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_SCG;
+    else if (safoutDiag & SAFOUT_OL << 4)
+        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_OL;
+    else if (safoutDiag & SAFOUT_OC << 4)
         safoutDFCs_s->dfcOut2 = SAFOUT_DFC_OC;
     else
         safoutDFCs_s->dfcOut2 = SAFOUT_DFC_NO_FAULT;
+
+    if (safoutDiag & SAFOUT_SCB << 8)
+        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_SCB;
+    else if (safoutDiag & SAFOUT_SCG << 8)
+        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_SCG;
+    else if (safoutDiag & SAFOUT_OL << 8)
+        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_OL;
+    else if (safoutDiag & SAFOUT_OC << 8)
+        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_OC;
+    else
+        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_NO_FAULT;
+
+    if (safoutDiag & SAFOUT_SCB << 12)
+        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_SCB;
+    else if (safoutDiag & SAFOUT_SCG << 12)
+        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_SCG;
+    else if (safoutDiag & SAFOUT_OL << 12)
+        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_OL;
+    else if (safoutDiag & SAFOUT_OC << 12)
+        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_OC;
+    else
+        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_NO_FAULT;
 }
 
 void ExtractSafoutStatusBits(uint16 status, safout_status_ts* statusStruct)
@@ -441,9 +515,19 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
     can_isobus_info tempInfoSafoutDebug2 = INFO_SAFOUT_DEBUG2;
     safout_status_ts tempStatus_s;
     safout_dfc_ts tempDFCs_s;
-
+    ImGui::Text("statusVar: %d", outputPinStatus.status_b16);
     ExtractSafoutStatusBits(outputPinStatus.status_b16, &tempStatus_s);
     ExtractSafoutDFC(outputPinStatus.diag_u32, &tempDFCs_s);
+
+    ImGui::Text("initialized: %d", tempStatus_s.initialized);
+    ImGui::Text("configured: %d", tempStatus_s.configured);
+    ImGui::Text("activeOut1: %d", tempStatus_s.activeOut1);
+    ImGui::Text("activeOut2: %d", tempStatus_s.activeOut2);
+    ImGui::Text("activeOut3: %d", tempStatus_s.activeOut3);
+    ImGui::Text("activeOut4: %d", tempStatus_s.activeOut4);
+    ImGui::Text("lockedChnl: %d", tempStatus_s.lockedChnl);
+    ImGui::Text("iDevCmpHSLS: %d", tempStatus_s.iDevCmpHSLS);
+    ImGui::Text("ignoreError: %d", tempStatus_s.ignoreError);
 
     int tempScaledVal = 0;
     ScaleAndOffsetForTx(tempStatus_s.initialized, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_INITIALIZED], &tempScaledVal);
@@ -457,13 +541,13 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
     ScaleAndOffsetForTx(tempStatus_s.ignoreError, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IGNORE_ERR], &tempScaledVal);
     InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IGNORE_ERR, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(tempStatus_s.activeOut1, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT1], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT1, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT1, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(tempStatus_s.activeOut2, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT2], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT2, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT2, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(tempStatus_s.activeOut3, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT3], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT3, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT3, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(tempStatus_s.activeOut4, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT4], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG1_ACTIVE_OUT4, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT4, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(outputPinStatus.setOutCo_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_COM], &tempScaledVal);
     InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_COM, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(outputPinStatus.setOut1_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT1], &tempScaledVal);
@@ -484,13 +568,13 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
     }
     ImGui::Text("");
     ScaleAndOffsetForTx(tempDFCs_s.dfcOut1, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT1], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT1, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT1, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(tempDFCs_s.dfcOut2, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT2], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT2, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT2, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(tempDFCs_s.dfcOut3, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT3], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT3, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT3, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(tempDFCs_s.dfcOut4, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT4], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG2_DFC_OUT4, (uint64)tempScaledVal);
+    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT4, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(outputPinStatus.iOut1_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT1], &tempScaledVal);
     InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT1, (uint64)tempScaledVal);
     ScaleAndOffsetForTx(outputPinStatus.iOut2_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT2], &tempScaledVal);
@@ -509,6 +593,108 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
         ImGui::Text("%02X ", tempInfoSafoutDebug2.data[i]);
         ImGui::SameLine();
     }
+
+    // test out extracting the values we inserted to make sure we did it right
+    bds_safout_ts outputPinStatusTest;
+    safout_status_ts statusTest;
+    safout_dfc_ts dfcTest;
+    uint64_t outputVal;
+    int scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_INITIALIZED, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_INITIALIZED], &scaledVal);
+    statusTest.initialized = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_CONFIGURED, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_CONFIGURED], &scaledVal);
+    statusTest.configured = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_LOCKED_CHNL, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_LOCKED_CHNL], &scaledVal);
+    statusTest.lockedChnl = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_IDEV_CMP_HSLS, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IDEV_CMP_HSLS], &scaledVal);
+    statusTest.iDevCmpHSLS = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_IGNORE_ERR, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IGNORE_ERR], &scaledVal);
+    statusTest.ignoreError = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT1, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT1], &scaledVal);
+    statusTest.activeOut1 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT2, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT2], &scaledVal);
+    statusTest.activeOut2 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT3, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT3], &scaledVal);
+    statusTest.activeOut3 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT4, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT4], &scaledVal);
+    statusTest.activeOut4 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_COM, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_COM], &scaledVal);
+    outputPinStatusTest.setOutCo_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT1, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT1], &scaledVal);
+    outputPinStatusTest.setOut1_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT2, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT2], &scaledVal);
+    outputPinStatusTest.setOut2_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT3, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT3], &scaledVal);
+    outputPinStatusTest.setOut3_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT4, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT4], &scaledVal);
+    outputPinStatusTest.setOut4_u16 = scaledVal;
+
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT1, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT1], &scaledVal);
+    dfcTest.dfcOut1 = (safout_dfc_te)scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT2, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT2], &scaledVal);
+    dfcTest.dfcOut2 = (safout_dfc_te)scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT3, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT3], &scaledVal);
+    dfcTest.dfcOut3 = (safout_dfc_te)scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT4, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT4], &scaledVal);
+    dfcTest.dfcOut4 = (safout_dfc_te)scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT1, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT1], &scaledVal);
+    outputPinStatusTest.iOut1_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT2, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT2], &scaledVal);
+    outputPinStatusTest.iOut2_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT3, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT3], &scaledVal);
+    outputPinStatusTest.iOut3_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT4, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT4], &scaledVal);
+    outputPinStatusTest.iOut4_u16 = scaledVal;
+    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUTCOMM, &outputVal);
+    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUTCOMM], &scaledVal);
+    outputPinStatusTest.iOutCo_u16 = scaledVal;
+
+    ImGui::Text("");
+    ImGui::Text("statusTest.initialized: %d", statusTest.initialized);
+    ImGui::Text("statusTest.configured: %d", statusTest.configured);
+    ImGui::Text("statusTest.lockedChnl: %d", statusTest.lockedChnl);
+    ImGui::Text("statusTest.iDevCmpHSLS: %d", statusTest.iDevCmpHSLS);
+    ImGui::Text("statusTest.ignoreError: %d", statusTest.ignoreError);
+    ImGui::Text("statusTest.activeOut1: %d", statusTest.activeOut1);
+    ImGui::Text("statusTest.activeOut2: %d", statusTest.activeOut2);
+    ImGui::Text("statusTest.activeOut3: %d", statusTest.activeOut3);
+    ImGui::Text("statusTest.activeOut4: %d", statusTest.activeOut4);
+    ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut1);
+    ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut2);
+    ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut3);
+    ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut4);
+    ImGui::Text("outputPinStatusTest.setOut1_u16: %d", outputPinStatusTest.setOut1_u16);
+    ImGui::Text("outputPinStatusTest.setOut2_u16: %d", outputPinStatusTest.setOut2_u16);
+    ImGui::Text("outputPinStatusTest.setOut3_u16: %d", outputPinStatusTest.setOut3_u16);
+    ImGui::Text("outputPinStatusTest.setOut4_u16: %d", outputPinStatusTest.setOut4_u16);
+    ImGui::Text("outputPinStatusTest.setOutCo_u16: %d", outputPinStatusTest.setOutCo_u16);
+    ImGui::Text("outputPinStatusTest.iOut1_u16: %d", outputPinStatusTest.iOut1_u16);
+    ImGui::Text("outputPinStatusTest.iOut2_u16: %d", outputPinStatusTest.iOut2_u16);
+    ImGui::Text("outputPinStatusTest.iOut3_u16: %d", outputPinStatusTest.iOut3_u16);
+    ImGui::Text("outputPinStatusTest.iOut4_u16: %d", outputPinStatusTest.iOut4_u16);
+    ImGui::Text("outputPinStatusTest.iOutCo_u16: %d", outputPinStatusTest.iOutCo_u16);
 }
 
 
@@ -1907,10 +2093,93 @@ int main(int, char**)
             // 3. Show a CAN endianess playground window
             if (show_CAN_endianess_window)
             {
-                ImGui::SetNextWindowSize(ImVec2(1200, 750), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_Appearing);
                 ImGui::Begin("CAN Endianness", &show_CAN_endianess_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
-                    bds_safout_ts outputPinStatus;
+                    static bds_safout_ts outputPinStatus;
+                    static safout_status_ts statusStruct;
+                    static safout_dfc_ts dfcStruct;
+
+                    outputPinStatus.status_b16 = 0;
+                    ImGui::Checkbox("Initialized", &statusStruct.initialized);
+                    ImGui::Checkbox("configured", &statusStruct.configured);
+                    ImGui::Checkbox("activeOut1", &statusStruct.activeOut1);
+                    ImGui::Checkbox("activeOut2", &statusStruct.activeOut2);
+                    ImGui::Checkbox("activeOut3", &statusStruct.activeOut3);
+                    ImGui::Checkbox("activeOut4", &statusStruct.activeOut4);
+                    ImGui::Checkbox("lockedChnl", &statusStruct.lockedChnl);
+                    ImGui::Checkbox("iDevCmpHSLS", &statusStruct.iDevCmpHSLS);
+                    ImGui::Checkbox("ignoreError", &statusStruct.ignoreError);
+
+                    if (statusStruct.initialized)
+                        outputPinStatus.status_b16 |= SAFOUT_INITIALIZED_MASK;
+                    if (statusStruct.configured)
+                        outputPinStatus.status_b16 |= SAFOUT_CONFIGURED_MASK;
+                    if (statusStruct.activeOut1)
+                        outputPinStatus.status_b16 |= SAFOUT_ACTIVEOUT1_MASK;
+                    if (statusStruct.activeOut2)
+                        outputPinStatus.status_b16 |= SAFOUT_ACTIVEOUT2_MASK;
+                    if (statusStruct.activeOut3)
+                        outputPinStatus.status_b16 |= SAFOUT_ACTIVEOUT3_MASK;
+                    if (statusStruct.activeOut4)
+                        outputPinStatus.status_b16 |= SAFOUT_ACTIVEOUT4_MASK;
+                    if (statusStruct.lockedChnl)
+                        outputPinStatus.status_b16 |= SAFOUT_LOCKEDCHNL_MASK;
+                    if (statusStruct.iDevCmpHSLS)
+                        outputPinStatus.status_b16 |= SAFOUT_IDEVCMPHSLS_MASK;
+                    if (statusStruct.ignoreError)
+                        outputPinStatus.status_b16 |= SAFOUT_IGNOREERROR_MASK;
+
+                    outputPinStatus.diag_u32 = 0;
+                    static int tempDFC1 = 0;
+                    static int tempDFC2 = 0;
+                    static int tempDFC3 = 0;
+                    static int tempDFC4 = 0;
+                    ImGui::SliderInt("DFC_Out1", &tempDFC1, 0, 4);
+                    dfcStruct.dfcOut1 = (safout_dfc_te)tempDFC1;
+                    ImGui::SliderInt("DFC_Out2", &tempDFC2, 0, 4);
+                    dfcStruct.dfcOut2 = (safout_dfc_te)tempDFC2;
+                    ImGui::SliderInt("DFC_Out3", &tempDFC3, 0, 4);
+                    dfcStruct.dfcOut3 = (safout_dfc_te)tempDFC3;
+                    ImGui::SliderInt("DFC_Out4", &tempDFC4, 0, 4);
+                    dfcStruct.dfcOut4 = (safout_dfc_te)tempDFC4;
+
+                    if (dfcStruct.dfcOut1 == SAFOUT_DFC_SCB)
+                        outputPinStatus.diag_u32 |= SAFOUT_SCB;
+                    if (dfcStruct.dfcOut1 == SAFOUT_DFC_SCG)
+                        outputPinStatus.diag_u32 |= SAFOUT_SCG;
+                    if (dfcStruct.dfcOut1 == SAFOUT_DFC_OL)
+                        outputPinStatus.diag_u32 |= SAFOUT_OL;
+                    if (dfcStruct.dfcOut1 == SAFOUT_DFC_OC)
+                        outputPinStatus.diag_u32 |= SAFOUT_OC;
+
+                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_SCB)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCB << 4);
+                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_SCG)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCG << 4);
+                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_OL)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OL << 4);
+                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_OC)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OC << 4);
+
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_SCB)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCB << 8);
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_SCG)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCG << 8);
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_OL)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OL << 8);
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_OC)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OC << 8);
+
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_SCB)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCB << 12);
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_SCG)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCG << 12);
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_OL)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OL << 12);
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_OC)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OC << 12);
+
                     ImGui::SliderInt("iOut1", &outputPinStatus.iOut1_u16, 0, 4000);
                     ImGui::SliderInt("iOut2", &outputPinStatus.iOut2_u16, 0, 4000);
                     ImGui::SliderInt("iOut3", &outputPinStatus.iOut3_u16, 0, 4000);
@@ -1920,6 +2189,7 @@ int main(int, char**)
                     ImGui::SliderInt("iSet2", &outputPinStatus.setOut2_u16, 0, 4000);
                     ImGui::SliderInt("iSet3", &outputPinStatus.setOut3_u16, 0, 4000);
                     ImGui::SliderInt("iSet4", &outputPinStatus.setOut4_u16, 0, 4000);
+                    ImGui::SliderInt("iSetCo", &outputPinStatus.setOutCo_u16, 0, 4000);
                     Send_SAFOUT_DebugToCanTX(outputPinStatus, RBR_CAN_1_E, 0x69, 0x420, 0);
                 }
                 ImGui::End();
