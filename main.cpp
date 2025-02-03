@@ -18,6 +18,16 @@
 
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
+
+#define uint64 uint64_t
+#define sint64 int64_t
+#define uint32 uint32_t
+#define sint32 int32_t
+#define uint16 uint16_t
+#define sint16 int16_t
+#define uint8 uint8_t
+#define sint8 int8_t
+
 bool useWindow = true;
 int gizmoCount = 1;
 static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
@@ -25,6 +35,7 @@ static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
 Kalman kalman;
 
 float camDistance = 8.f;
+
 
 float objectMatrix[4][16] = {
   { 1.f, 0.f, 0.f, 0.f,
@@ -233,6 +244,69 @@ int InsertValueToCanTelegram(can_isobus_info* messageData, int spnInfoIndex, uin
     // *output = (val >> bitIndex) & mask;
     return 0;
 }*/
+void ScaleAndOffsetForTx_Float(uint64 inRawVal, spn_info spn, float* outVal)
+{
+    *outVal = (float)((inRawVal - spn.offset) / spn.scaling);
+}
+
+void ScaleAndOffsetForTx_Int(uint64 inRawVal, spn_info spn, int* outVal)
+{
+    *outVal = (int)((inRawVal - spn.offset) / spn.scaling);
+}
+
+void ScaleAndOffsetForTx(uint64 inRawVal, spn_info spn, void* outVal)
+{
+    switch (spn.varType)
+    {
+    case TYPE_INT:
+        ScaleAndOffsetForTx_Int(inRawVal, spn, (int*)outVal);
+        break;
+    case TYPE_FLOAT:
+        ScaleAndOffsetForTx_Float(inRawVal, spn, (float*)outVal);
+        break;
+    default: // do nothing for now...
+        break;
+    }
+}
+
+void ScaleAndOffsetForRx_Float(uint64 inRawVal, spn_info spn, float* outVal)
+{
+    *outVal = (float)(inRawVal * spn.scaling + spn.offset);
+}
+
+void ScaleAndOffsetForRx_Int(uint64 inRawVal, spn_info spn, int* outVal)
+{
+    *outVal = (int)(inRawVal * (int)spn.scaling + spn.offset);
+}
+
+void ScaleAndOffsetForRx(uint64 inRawVal, spn_info spn, void* outVal)
+{
+    switch (spn.varType)
+    {
+    case TYPE_INT:
+        ScaleAndOffsetForRx_Int(inRawVal, spn, (int*)outVal);
+        break;
+    case TYPE_FLOAT:
+        ScaleAndOffsetForRx_Float(inRawVal, spn, (float*)outVal);
+        break;
+    default: // do nothing for now...
+        break;
+    }
+}
+
+int ScaleOffsetAndInsertValueToCan(can_isobus_info* messageData, int spnInfoIndex, uint64 inVal)
+{
+    uint64 tempScaledVal;
+    ScaleAndOffsetForTx(inVal, messageData->spns[spnInfoIndex], &tempScaledVal);
+    return InsertValueToCanTelegram(messageData, spnInfoIndex, tempScaledVal);
+}
+
+int ExtractScaleAndOffsetValueFromCan(can_isobus_info* messageData, int spnInfoIndex, uint64* rawVal, void* scaledVal)
+{
+    int output = ExtractValueFromCanTelegram(*messageData, spnInfoIndex, rawVal);
+    ScaleAndOffsetForRx(*rawVal, messageData->spns[spnInfoIndex], scaledVal);
+    return output;
+}
 
 typedef enum
 {
@@ -372,7 +446,6 @@ typedef struct bds_safout_t {
     int testSts_u16 = 0;
 } bds_safout_ts;
 
-
 typedef enum
 {
     RBR_CAN_1_E = 0
@@ -384,64 +457,226 @@ typedef enum
 
 #define bds_can_Chnl_te rbr_can_Chnl_te
 
-#define uint64 uint64_t
-#define sint64 int64_t
-#define uint32 uint32_t
-#define sint32 int32_t
-#define uint16 uint16_t
-#define sint16 int16_t
-#define uint8 uint8_t
-#define sint8 int8_t
+/* status flags for status_b16 */
+
+#define PO_INITIALIZED_MASK              0x0001u    /* initialization after startup */
+#define PO_CFG_POC_MASK           0x0002u    /* configuration of closed loop control */
+#define PO_CFG_PERIOD_MASK            0x0004u    /* configuration of period */
+#define PO_CFG_DITHER_MASK            0x0008u    /* configuration of dither */
+#define PO_CFG_DEVIATION_MASK         0x0010u    /* configuration of deviation */
+#define PO_CFG_PI_MASK                0x0020u    /* configuration of KpKi */
+#define PO_LOCKED_SCB_MASK            0x0040u    /* locked by SCB...necessary for AOV outputs */
+#define PO_LOCKED_SCG_MASK            0x0080u    /* locked by SCG...necessary for AOV outputs */
+#define PO_LOCKED_OC_MASK             0x0100u    /* locked by over current */
+#define PO_LOCKED_MASK               0x0200u    /* locked by error handler (faults are SCB, SCG, OL and OT) */
+#define PO_LOCKED_MO_MASK             0x0400u    /* locked by Self-monitoring Error */
+#define PO_LOCK_COU_TI_REACT_MASK 0x0800u    /* locked reactivation timer reload after a hot short circuit */
+#define PO_TI_REACT_NOT_ELAPSTED_MASK 0x1000u    /* time for reactivation after a hot short circuit not elapsed */
+#define PO_LINKED_MASK               0x2000u    /* linked at least with one other safout output */
+#define PO_TST_PLS_DISABLE_MASK            0x4000u    /* Test pulses disable */
+#define PO_DISABLE             0x8000u    /* output is disabled (avoid open load faults of unused outputs)*/
 
 
-void ScaleAndOffsetForTx_Float(uint64 inRawVal, spn_info spn, float* outVal)
+typedef struct
 {
-    *outVal = (float)((inRawVal - spn.offset) / spn.scaling);
+    uint16  status_b16;
+    uint16 dc_u16;
+    uint16 digits_u16;
+    int iSet_u16;
+    int iAct_u16;
+    int iActRaw_mA_u16;
+    uint16 stDFC_SCB_u16;
+    uint16 stDFC_SCG_u16;
+    uint16 stDFC_OL_u16;
+    uint16 stDFC_OT_u16;
+    uint16 stDFC_OC_u16;
+    uint16 stDFC_OR_u16;
+    bool unintendedSwitchONErr_l;
+    bool lockedByINH_l;
+} bds_out_po_ts;
+
+typedef struct
+{
+    bool initialized;
+    bool configured_POC;
+    bool configured_Period;
+    bool configured_Dither;
+    bool configured_Deviation;
+    bool configured_PI;
+    bool locked_SCB;
+    bool locked_SCG;
+    bool locked_OC;
+    bool locked;
+    bool locked_MO;
+    bool lockCouTiReact;
+    bool TiReactNotElapsed;
+    bool linked;
+    bool testPulsesDisable;
+    bool disable;
+} propOut_status_ts;
+
+typedef enum
+{
+    PO_DEBUG_INIT_OUT,
+    PO_DEBUG_CFG_POC,
+    PO_DEBUG_CFG_PERIOD,
+    PO_DEBUG_CFG_DITHER,
+    PO_DEBUG_CFG_DEVIATION,
+    PO_DEBUG_CFG_PI,
+    PO_DEBUG_LOCKED_SCB,
+    PO_DEBUG_LOCKED_SCG,
+    PO_DEBUG_LOCKED_OC,
+    PO_DEBUG_LOCKED,
+    PO_DEBUG_LOCKED_MO,
+    PO_DEBUG_LOCK_COU_TI_REACT,
+    PO_DEBUG_TI_REACT_NOT_ELAPSED,
+    PO_DEBUG_LINKED,
+    PO_DEBUG_TST_PLS_DIS,
+    PO_DEBUG_DISABLED,
+    PO_DEBUG_DFC_SCB,
+    PO_DEBUG_DFC_SCG,
+    PO_DEBUG_DFC_OL,
+    PO_DEBUG_DFC_OT,
+    PO_DEBUG_DFC_OC,
+    PO_DEBUG_DFC_OR,
+    PO_DEBUG_UNINTENDED_SWTCH_ON_ERR,
+    PO_DEBUG_LOCKED_BY_INH,
+    PO_DEBUG_I_SET,
+    PO_DEBUG_I_ACT,
+    PO_DEBUG_I_ACT_RAW_MA,
+} PO_DEBUG_SPNs;
+
+can_isobus_info INFO_PO_DEBUG = {
+    .instanceNum = 1,
+    .boxNum = 3,
+    .pgn = 0x0000,
+    .prio = 3,
+    .src = 0x00,
+    .timeout = 500,
+    .startTimeout = 5000,
+    .lenMax = 8,
+    .spns = {
+        {.spnNum = 0, .byte = 1, .bit = 1, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 2, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 3, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 4, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 5, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 6, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 7, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 1, .bit = 8, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 1, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 2, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 3, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 4, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 5, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 6, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 7, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 2, .bit = 8, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 1, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 2, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 3, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 4, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 5, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 6, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 7, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 3, .bit = 8, .len = 1, .scaling = 1, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 4, .bit = 1, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 5, .bit = 3, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT},
+        {.spnNum = 0, .byte = 6, .bit = 5, .len = 10, .scaling = 4, .offset = 0, .varType = TYPE_INT}} };
+
+boolean bds_dsm_DFC_ldf(uint16 Data)
+{
+    return ((((Data) & ((uint16)(1uL << 4))) != 0u));
 }
 
-void ScaleAndOffsetForTx_Int(uint64 inRawVal, spn_info spn, int* outVal)
+/* proportional output status flags */
+#define PROP_OUT_INITIALIZED_MASK 0x0001u          /* initialization after startup */
+#define PROP_OUT_CFG_POC_MASK 0x0002u              /* configuration of closed loop control */
+#define PROP_OUT_CFG_PERIOD_MASK 0x0004u           /* configuration of period */
+#define PROP_OUT_CFG_DITHER_MASK 0x0008u           /* configuration of dither */
+#define PROP_OUT_CFG_DEVIATION_MASK 0x0010u        /* configuration of deviation */
+#define PROP_OUT_CFG_PI_MASK 0x0020u               /* configuration of KpKi */
+#define PROP_OUT_LOCKED_SCB_MASK 0x0040u           /* locked by SCB...necessary for AOV outputs */
+#define PROP_OUT_LOCKED_SCG_MASK 0x0080u           /* locked by SCG...necessary for AOV outputs */
+#define PROP_OUT_LOCKED_OC_MASK 0x0100u            /* locked by over current */
+#define PROP_OUT_LOCKED_MASK 0x0200u               /* locked by error handler (faults are SCB, SCG, OL and OT) */
+#define PROP_OUT_LOCKED_MO_MASK 0x0400u            /* locked by Self-monitoring Error */
+#define PROP_OUT_LOCK_COU_TI_REACT_MASK 0x0800u    /* locked reactivation timer reload after a hot short circuit */
+#define PROP_OUT_TI_REACT_NOT_ELAPSED_MASK 0x1000u /* time for reactivation after a hot short circuit not elapsed */
+#define PROP_OUT_LINKED_MASK 0x2000u               /* linked at least with one other safout output */
+#define PROP_OUT_TEST_PULSE_DISABLE_MASK 0x4000u   /* Test pulses disable */
+#define PROP_OUT_DISABLE_MASK 0x8000u              /* output is disabled (avoid open load faults of unused outputs)*/
+
+void ExtractPropOutStatusBits(uint16 status, propOut_status_ts* statusStruct)
 {
-    *outVal = (int)((inRawVal - spn.offset) / spn.scaling);
+    statusStruct->initialized = (status & PROP_OUT_INITIALIZED_MASK) ? TRUE : FALSE;
+    statusStruct->configured_POC = (status & PROP_OUT_CFG_POC_MASK) ? TRUE : FALSE;
+    statusStruct->configured_Period = (status & PROP_OUT_CFG_PERIOD_MASK) ? TRUE : FALSE;
+    statusStruct->configured_Dither = (status & PROP_OUT_CFG_DITHER_MASK) ? TRUE : FALSE;
+    statusStruct->configured_Deviation = (status & PROP_OUT_CFG_DEVIATION_MASK) ? TRUE : FALSE;
+    statusStruct->configured_PI = (status & PROP_OUT_CFG_PI_MASK) ? TRUE : FALSE;
+    statusStruct->locked_SCB = (status & PROP_OUT_LOCKED_SCB_MASK) ? TRUE : FALSE;
+    statusStruct->locked_SCG = (status & PROP_OUT_LOCKED_SCG_MASK) ? TRUE : FALSE;
+    statusStruct->locked_OC = (status & PROP_OUT_LOCKED_OC_MASK) ? TRUE : FALSE;
+    statusStruct->locked = (status & PROP_OUT_LOCKED_MASK) ? TRUE : FALSE;
+    statusStruct->locked_MO = (status & PROP_OUT_LOCKED_MO_MASK) ? TRUE : FALSE;
+    statusStruct->lockCouTiReact = (status & PROP_OUT_LOCK_COU_TI_REACT_MASK) ? TRUE : FALSE;
+    statusStruct->TiReactNotElapsed = (status & PROP_OUT_TI_REACT_NOT_ELAPSED_MASK) ? TRUE : FALSE;
+    statusStruct->linked = (status & PROP_OUT_LINKED_MASK) ? TRUE : FALSE;
+    statusStruct->testPulsesDisable = (status & PROP_OUT_TEST_PULSE_DISABLE_MASK) ? TRUE : FALSE;
+    statusStruct->disable = (status & PROP_OUT_DISABLE_MASK) ? TRUE : FALSE;
 }
 
-void ScaleAndOffsetForTx(uint64 inRawVal, spn_info spn, void* outVal)
+void Send_PropOut_DebugToCanTX(bds_out_po_ts outputPinStatus, bds_can_Chnl_te canChnl, uint32 canID1, uint8 canFormat)
 {
-    switch (spn.varType)
+    can_isobus_info tempInfoPODebug1 = INFO_PO_DEBUG;
+    propOut_status_ts tempStatus_s;
+
+    ExtractPropOutStatusBits(outputPinStatus.status_b16, &tempStatus_s);
+
+    uint8 statSCB = bds_dsm_DFC_ldf(outputPinStatus.stDFC_SCB_u16);
+    uint8 statSCG = bds_dsm_DFC_ldf(outputPinStatus.stDFC_SCG_u16);
+    uint8 statOL = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OL_u16);
+    uint8 statOT = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OT_u16);
+    uint8 statOC = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OC_u16);
+    uint8 statOR = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OR_u16);
+
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_INIT_OUT, tempStatus_s.initialized);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_CFG_POC, tempStatus_s.configured_POC);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_CFG_PERIOD, tempStatus_s.configured_Period);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_CFG_DITHER, tempStatus_s.configured_Dither);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_CFG_DEVIATION, tempStatus_s.configured_Deviation);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_CFG_PI, tempStatus_s.configured_PI);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LOCKED_SCB, tempStatus_s.locked_SCB);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LOCKED_SCG, tempStatus_s.locked_SCG);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LOCKED_OC, tempStatus_s.locked_OC);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LOCKED, tempStatus_s.locked);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LOCKED_MO, tempStatus_s.locked_MO);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LOCK_COU_TI_REACT, tempStatus_s.lockCouTiReact);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_TI_REACT_NOT_ELAPSED, tempStatus_s.TiReactNotElapsed);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LINKED, tempStatus_s.linked);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_TST_PLS_DIS, tempStatus_s.testPulsesDisable);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_DISABLED, tempStatus_s.disable);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_DFC_SCB, statSCB);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_DFC_SCG, statSCG);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_DFC_OL, statOL);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_DFC_OT, statOT);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_DFC_OC, statOC);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_DFC_OR, statOR);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_UNINTENDED_SWTCH_ON_ERR, outputPinStatus.unintendedSwitchONErr_l);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_LOCKED_BY_INH, outputPinStatus.lockedByINH_l);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_I_SET, outputPinStatus.iSet_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_I_ACT, outputPinStatus.iAct_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoPODebug1, PO_DEBUG_I_ACT_RAW_MA, outputPinStatus.iActRaw_mA_u16);
+    //bds_can_sendData(BDS_CAN_3_D, canID1, canFormat, 8, &tempInfoPODebug1.data);
+    ImGui::Text("Debug:");
+    ImGui::SameLine();
+    for (int i = 0; i < 8; i++)
     {
-    case TYPE_INT:
-        ScaleAndOffsetForTx_Int(inRawVal, spn, (int*)outVal);
-        break;
-    case TYPE_FLOAT:
-        ScaleAndOffsetForTx_Float(inRawVal, spn, (float*)outVal);
-        break;
-    default: // do nothing for now...
-        break;
+        ImGui::Text("%02X ", tempInfoPODebug1.data[i]);
+        ImGui::SameLine();
     }
-}
-
-void ScaleAndOffsetForRx_Float(uint64 inRawVal, spn_info spn, float* outVal)
-{
-    *outVal = (float)(inRawVal * spn.scaling + spn.offset);
-}
-
-void ScaleAndOffsetForRx_Int(uint64 inRawVal, spn_info spn, int* outVal)
-{
-    *outVal = (int)(inRawVal * (int)spn.scaling + spn.offset);
-}
-
-void ScaleAndOffsetForRx(uint64 inRawVal, spn_info spn, void* outVal)
-{
-    switch (spn.varType)
-    {
-    case TYPE_INT:
-        ScaleAndOffsetForRx_Int(inRawVal, spn, (int*)outVal);
-        break;
-    case TYPE_FLOAT:
-        ScaleAndOffsetForRx_Float(inRawVal, spn, (float*)outVal);
-        break;
-    default: // do nothing for now...
-        break;
-    }
+    ImGui::Text("");
 }
 
 #define SAFOUT_SCB     0x0001u
@@ -449,51 +684,32 @@ void ScaleAndOffsetForRx(uint64 inRawVal, spn_info spn, void* outVal)
 #define SAFOUT_OL     0x0004u
 #define SAFOUT_OC     0x0008u
 
-void ExtractSafoutDFC(uint32 safoutDiag, safout_dfc_ts* safoutDFCs_s)
+typedef enum
 {
-    if (safoutDiag & SAFOUT_SCB)
-        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_SCB;
-    else if (safoutDiag & SAFOUT_SCG)
-        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_SCG;
-    else if (safoutDiag & SAFOUT_OL)
-        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_OL;
-    else if (safoutDiag & SAFOUT_OC)
-        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_OC;
-    else
-        safoutDFCs_s->dfcOut1 = SAFOUT_DFC_NO_FAULT;
+    DFC_OUT_COM,
+    DFC_OUT_1,
+    DFC_OUT_2,
+    DFC_OUT_3,
+    DFC_OUT_4,
+    DFC_OUT_NUM,
+} dfc_out_te;
 
-    if (safoutDiag & SAFOUT_SCB << 4)
-        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_SCB;
-    else if (safoutDiag & SAFOUT_SCG << 4)
-        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_SCG;
-    else if (safoutDiag & SAFOUT_OL << 4)
-        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_OL;
-    else if (safoutDiag & SAFOUT_OC << 4)
-        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_OC;
-    else
-        safoutDFCs_s->dfcOut2 = SAFOUT_DFC_NO_FAULT;
-
-    if (safoutDiag & SAFOUT_SCB << 8)
-        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_SCB;
-    else if (safoutDiag & SAFOUT_SCG << 8)
-        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_SCG;
-    else if (safoutDiag & SAFOUT_OL << 8)
-        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_OL;
-    else if (safoutDiag & SAFOUT_OC << 8)
-        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_OC;
-    else
-        safoutDFCs_s->dfcOut3 = SAFOUT_DFC_NO_FAULT;
-
-    if (safoutDiag & SAFOUT_SCB << 12)
-        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_SCB;
-    else if (safoutDiag & SAFOUT_SCG << 12)
-        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_SCG;
-    else if (safoutDiag & SAFOUT_OL << 12)
-        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_OL;
-    else if (safoutDiag & SAFOUT_OC << 12)
-        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_OC;
-    else
-        safoutDFCs_s->dfcOut4 = SAFOUT_DFC_NO_FAULT;
+void ExtractSafoutDFC(uint32 safoutDiag, safout_dfc_te* safoutDFCs_s)
+{
+    int i = 0;
+    for (i; i < DFC_OUT_NUM; i++)
+    {
+        if (safoutDiag & SAFOUT_SCB << (4 * i))
+            safoutDFCs_s[i] = SAFOUT_DFC_SCB;
+        else if (safoutDiag & SAFOUT_SCG << (4 * i))
+            safoutDFCs_s[i] = SAFOUT_DFC_SCG;
+        else if (safoutDiag & SAFOUT_OL << (4 * i))
+            safoutDFCs_s[i] = SAFOUT_DFC_OL;
+        else if (safoutDiag & SAFOUT_OC << (4 * i))
+            safoutDFCs_s[i] = SAFOUT_DFC_OC;
+        else
+            safoutDFCs_s[i] = SAFOUT_DFC_NO_FAULT;
+    }
 }
 
 void ExtractSafoutStatusBits(uint16 status, safout_status_ts* statusStruct)
@@ -514,10 +730,10 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
     can_isobus_info tempInfoSafoutDebug1 = INFO_SAFOUT_DEBUG1;
     can_isobus_info tempInfoSafoutDebug2 = INFO_SAFOUT_DEBUG2;
     safout_status_ts tempStatus_s;
-    safout_dfc_ts tempDFCs_s;
+    safout_dfc_te dfcOut[DFC_OUT_NUM];
     ImGui::Text("statusVar: %d", outputPinStatus.status_b16);
     ExtractSafoutStatusBits(outputPinStatus.status_b16, &tempStatus_s);
-    ExtractSafoutDFC(outputPinStatus.diag_u32, &tempDFCs_s);
+    ExtractSafoutDFC(outputPinStatus.diag_u32, dfcOut);
 
     ImGui::Text("initialized: %d", tempStatus_s.initialized);
     ImGui::Text("configured: %d", tempStatus_s.configured);
@@ -530,34 +746,20 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
     ImGui::Text("ignoreError: %d", tempStatus_s.ignoreError);
 
     int tempScaledVal = 0;
-    ScaleAndOffsetForTx(tempStatus_s.initialized, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_INITIALIZED], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_INITIALIZED, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.configured, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_CONFIGURED], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_CONFIGURED, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.lockedChnl, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_LOCKED_CHNL], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_LOCKED_CHNL, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.iDevCmpHSLS, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IDEV_CMP_HSLS], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IDEV_CMP_HSLS, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.ignoreError, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IGNORE_ERR], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IGNORE_ERR, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.activeOut1, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT1], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT1, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.activeOut2, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT2], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT2, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.activeOut3, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT3], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT3, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempStatus_s.activeOut4, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT4], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT4, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.setOutCo_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_COM], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_COM, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.setOut1_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT1], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT1, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.setOut2_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT2], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT2, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.setOut3_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT3], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT3, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.setOut4_u16, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT4], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT4, (uint64)tempScaledVal);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_INITIALIZED, tempStatus_s.initialized);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_CONFIGURED, tempStatus_s.configured);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_LOCKED_CHNL, tempStatus_s.lockedChnl);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IDEV_CMP_HSLS, tempStatus_s.iDevCmpHSLS);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IGNORE_ERR, tempStatus_s.ignoreError);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT1, tempStatus_s.activeOut1);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT2, tempStatus_s.activeOut2);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT3, tempStatus_s.activeOut3);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT4, tempStatus_s.activeOut4);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_COM, outputPinStatus.setOutCo_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT1, outputPinStatus.setOut1_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT2, outputPinStatus.setOut2_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT3, outputPinStatus.setOut3_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT4, outputPinStatus.setOut4_u16);
     //bds_can_sendData(BDS_CAN_3_D, canID1, canFormat, 8, &tempInfoSafoutDebug1.data);
     ImGui::Text("Debug1:");
     ImGui::SameLine();
@@ -567,24 +769,15 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
         ImGui::SameLine();
     }
     ImGui::Text("");
-    ScaleAndOffsetForTx(tempDFCs_s.dfcOut1, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT1], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT1, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempDFCs_s.dfcOut2, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT2], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT2, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempDFCs_s.dfcOut3, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT3], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT3, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(tempDFCs_s.dfcOut4, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT4], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT4, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.iOut1_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT1], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT1, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.iOut2_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT2], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT2, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.iOut3_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT3], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT3, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.iOut4_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT4], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT4, (uint64)tempScaledVal);
-    ScaleAndOffsetForTx(outputPinStatus.iOutCo_u16, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUTCOMM], &tempScaledVal);
-    InsertValueToCanTelegram(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUTCOMM, (uint64)tempScaledVal);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT1, dfcOut[DFC_OUT_1]);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT2, dfcOut[DFC_OUT_2]);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT3, dfcOut[DFC_OUT_3]);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT4, dfcOut[DFC_OUT_4]);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT1, outputPinStatus.iOut1_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT2, outputPinStatus.iOut2_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT3, outputPinStatus.iOut3_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT4, outputPinStatus.iOut4_u16);
+    ScaleOffsetAndInsertValueToCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUTCOMM, outputPinStatus.iOutCo_u16);
     //bds_can_sendData(BDS_CAN_3_D, canID2, canFormat, 8, &tempInfoSafoutDebug2.data);
     ImGui::Text("Debug2:");
     ImGui::SameLine();
@@ -598,77 +791,54 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
     bds_safout_ts outputPinStatusTest;
     safout_status_ts statusTest;
     safout_dfc_ts dfcTest;
-    uint64_t outputVal;
+    uint64_t rawVal;
     int scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_INITIALIZED, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_INITIALIZED], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_INITIALIZED, &rawVal, &scaledVal);
     statusTest.initialized = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_CONFIGURED, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_CONFIGURED], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_CONFIGURED, &rawVal, &scaledVal);
     statusTest.configured = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_LOCKED_CHNL, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_LOCKED_CHNL], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_LOCKED_CHNL, &rawVal, &scaledVal);
     statusTest.lockedChnl = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_IDEV_CMP_HSLS, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IDEV_CMP_HSLS], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IDEV_CMP_HSLS, &rawVal, &scaledVal);
     statusTest.iDevCmpHSLS = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_IGNORE_ERR, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_IGNORE_ERR], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_IGNORE_ERR, &rawVal, &scaledVal);
     statusTest.ignoreError = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT1, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT1], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT1, &rawVal, &scaledVal);
     statusTest.activeOut1 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT2, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT2], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT2, &rawVal, &scaledVal);
     statusTest.activeOut2 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT3, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT3], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT3, &rawVal, &scaledVal);
     statusTest.activeOut3 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT4, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ACTIVE_OUT4], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ACTIVE_OUT4, &rawVal, &scaledVal);
     statusTest.activeOut4 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_COM, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_COM], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_COM, &rawVal, &scaledVal);
     outputPinStatusTest.setOutCo_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT1, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT1], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT1, &rawVal, &scaledVal);
     outputPinStatusTest.setOut1_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT2, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT2], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT2, &rawVal, &scaledVal);
     outputPinStatusTest.setOut2_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT3, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT3], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT3, &rawVal, &scaledVal);
     outputPinStatusTest.setOut3_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT4, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug1.spns[SAFOUT_DEBUG1_ISET_OUT4], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug1, SAFOUT_DEBUG1_ISET_OUT4, &rawVal, &scaledVal);
     outputPinStatusTest.setOut4_u16 = scaledVal;
 
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT1, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT1], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT1, &rawVal, &scaledVal);
     dfcTest.dfcOut1 = (safout_dfc_te)scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT2, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT2], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT2, &rawVal, &scaledVal);
     dfcTest.dfcOut2 = (safout_dfc_te)scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT3, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT3], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT3, &rawVal, &scaledVal);
     dfcTest.dfcOut3 = (safout_dfc_te)scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT4, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_DFC_OUT4], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_DFC_OUT4, &rawVal, &scaledVal);
     dfcTest.dfcOut4 = (safout_dfc_te)scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT1, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT1], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT1, &rawVal, &scaledVal);
     outputPinStatusTest.iOut1_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT2, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT2], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT2, &rawVal, &scaledVal);
     outputPinStatusTest.iOut2_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT3, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT3], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT3, &rawVal, &scaledVal);
     outputPinStatusTest.iOut3_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT4, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUT4], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUT4, &rawVal, &scaledVal);
     outputPinStatusTest.iOut4_u16 = scaledVal;
-    ExtractValueFromCanTelegram(tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUTCOMM, &outputVal);
-    ScaleAndOffsetForRx(outputVal, tempInfoSafoutDebug2.spns[SAFOUT_DEBUG2_IMEAS_OUTCOMM], &scaledVal);
+    ExtractScaleAndOffsetValueFromCan(&tempInfoSafoutDebug2, SAFOUT_DEBUG2_IMEAS_OUTCOMM, &rawVal, &scaledVal);
     outputPinStatusTest.iOutCo_u16 = scaledVal;
 
     ImGui::Text("");
@@ -682,9 +852,9 @@ void Send_SAFOUT_DebugToCanTX(bds_safout_ts outputPinStatus, bds_can_Chnl_te can
     ImGui::Text("statusTest.activeOut3: %d", statusTest.activeOut3);
     ImGui::Text("statusTest.activeOut4: %d", statusTest.activeOut4);
     ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut1);
-    ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut2);
-    ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut3);
-    ImGui::Text("dfcTest.dfcOut1: %d", dfcTest.dfcOut4);
+    ImGui::Text("dfcTest.dfcOut2: %d", dfcTest.dfcOut2);
+    ImGui::Text("dfcTest.dfcOut3: %d", dfcTest.dfcOut3);
+    ImGui::Text("dfcTest.dfcOut4: %d", dfcTest.dfcOut4);
     ImGui::Text("outputPinStatusTest.setOut1_u16: %d", outputPinStatusTest.setOut1_u16);
     ImGui::Text("outputPinStatusTest.setOut2_u16: %d", outputPinStatusTest.setOut2_u16);
     ImGui::Text("outputPinStatusTest.setOut3_u16: %d", outputPinStatusTest.setOut3_u16);
@@ -2089,12 +2259,123 @@ int main(int, char**)
                 ImGui::End();
             }
 
-            static bool show_CAN_endianess_window = true;
+            static bool show_CAN_PropOut_window = true;
             // 3. Show a CAN endianess playground window
-            if (show_CAN_endianess_window)
+            if (show_CAN_PropOut_window)
             {
                 ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_Appearing);
-                ImGui::Begin("CAN Endianness", &show_CAN_endianess_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                ImGui::Begin("PROP OUT DEBUG", &show_CAN_PropOut_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    static bds_out_po_ts outputPinStatus;
+                    static propOut_status_ts statusStruct;
+
+                    bool statSCB = bds_dsm_DFC_ldf(outputPinStatus.stDFC_SCB_u16);
+                    bool statSCG = bds_dsm_DFC_ldf(outputPinStatus.stDFC_SCG_u16);
+                    bool statOL = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OL_u16);
+                    bool statOT = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OT_u16);
+                    bool statOC = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OC_u16);
+                    bool statOR = bds_dsm_DFC_ldf(outputPinStatus.stDFC_OR_u16);
+
+                    ImGui::Checkbox("Initialized", &statusStruct.initialized);
+                    ImGui::Checkbox("configured_POC", &statusStruct.configured_POC);
+                    ImGui::Checkbox("configured_Period", &statusStruct.configured_Period);
+                    ImGui::Checkbox("configured_Dither", &statusStruct.configured_Dither);
+                    ImGui::Checkbox("configured_Deviation", &statusStruct.configured_Deviation);
+                    ImGui::Checkbox("configured_PI", &statusStruct.configured_PI);
+                    ImGui::Checkbox("locked_SCB", &statusStruct.locked_SCB);
+                    ImGui::Checkbox("locked_SCG", &statusStruct.locked_SCG);
+                    ImGui::Checkbox("locked_OC", &statusStruct.locked_OC);
+                    ImGui::Checkbox("locked", &statusStruct.locked);
+                    ImGui::Checkbox("locked_MO", &statusStruct.locked_MO);
+                    ImGui::Checkbox("lockCouTiReact", &statusStruct.lockCouTiReact);
+                    ImGui::Checkbox("TiReactNotElapsed", &statusStruct.TiReactNotElapsed);
+                    ImGui::Checkbox("linked", &statusStruct.linked);
+                    ImGui::Checkbox("testPulsesDisable", &statusStruct.testPulsesDisable);
+                    ImGui::Checkbox("disable", &statusStruct.disable);
+                    ImGui::Checkbox("statSCB", &statSCB);
+                    ImGui::Checkbox("statSCG", &statSCG);
+                    ImGui::Checkbox("statOL", &statOL);
+                    ImGui::Checkbox("statOT", &statOT);
+                    ImGui::Checkbox("statOC", &statOC);
+                    ImGui::Checkbox("statOR", &statOR);
+                    ImGui::Checkbox("unintendedSwitchONErr_l", &outputPinStatus.unintendedSwitchONErr_l);
+                    ImGui::Checkbox("lockedByINH_l", &outputPinStatus.lockedByINH_l);
+
+                    if (statSCB)
+                        outputPinStatus.stDFC_SCB_u16 = 1 << 4;
+                    else
+                        outputPinStatus.stDFC_SCB_u16 = 0;
+                    if (statSCG)
+                        outputPinStatus.stDFC_SCG_u16 = 1 << 4;
+                    else
+                        outputPinStatus.stDFC_SCG_u16 = 0;
+                    if (statOL)
+                        outputPinStatus.stDFC_OL_u16 = 1 << 4;
+                    else
+                        outputPinStatus.stDFC_OL_u16 = 0;
+                    if (statOT)
+                        outputPinStatus.stDFC_OT_u16 = 1 << 4;
+                    else
+                        outputPinStatus.stDFC_OT_u16 = 0;
+                    if (statOC)
+                        outputPinStatus.stDFC_OC_u16 = 1 << 4;
+                    else
+                        outputPinStatus.stDFC_OC_u16 = 0;
+                    if (statOR)
+                        outputPinStatus.stDFC_OR_u16 = 1 << 4;
+                    else
+                        outputPinStatus.stDFC_OR_u16 = 0;
+
+                    outputPinStatus.status_b16 = 0;
+                    if (statusStruct.initialized)
+                        outputPinStatus.status_b16 |= PO_INITIALIZED_MASK;
+                    if (statusStruct.configured_POC)
+                        outputPinStatus.status_b16 |= PO_CFG_POC_MASK;
+                    if (statusStruct.configured_Period)
+                        outputPinStatus.status_b16 |= PO_CFG_PERIOD_MASK;
+                    if (statusStruct.configured_Dither)
+                        outputPinStatus.status_b16 |= PO_CFG_DITHER_MASK;
+                    if (statusStruct.configured_Deviation)
+                        outputPinStatus.status_b16 |= PO_CFG_DEVIATION_MASK;
+                    if (statusStruct.configured_PI)
+                        outputPinStatus.status_b16 |= PO_CFG_PI_MASK;
+                    if (statusStruct.locked_SCB)
+                        outputPinStatus.status_b16 |= PO_LOCKED_SCB_MASK;
+                    if (statusStruct.locked_SCG)
+                        outputPinStatus.status_b16 |= PO_LOCKED_SCG_MASK;
+                    if (statusStruct.locked_OC)
+                        outputPinStatus.status_b16 |= PO_LOCKED_OC_MASK;
+                    if (statusStruct.locked)
+                        outputPinStatus.status_b16 |= PO_LOCKED_MASK;
+                    if (statusStruct.locked_MO)
+                        outputPinStatus.status_b16 |= PO_LOCKED_MO_MASK;
+                    if (statusStruct.lockCouTiReact)
+                        outputPinStatus.status_b16 |= PO_LOCK_COU_TI_REACT_MASK;
+                    if (statusStruct.TiReactNotElapsed)
+                        outputPinStatus.status_b16 |= PO_TI_REACT_NOT_ELAPSTED_MASK;
+                    if (statusStruct.linked)
+                        outputPinStatus.status_b16 |= PO_LINKED_MASK;
+                    if (statusStruct.testPulsesDisable)
+                        outputPinStatus.status_b16 |= PO_TST_PLS_DISABLE_MASK;
+                    if (statusStruct.disable)
+                        outputPinStatus.status_b16 |= PO_DISABLE;
+
+
+                    ImGui::SliderInt("iOut1", &outputPinStatus.iSet_u16, 0, 4000);
+                    ImGui::SliderInt("iOut2", &outputPinStatus.iAct_u16, 0, 4000);
+                    ImGui::SliderInt("iOut3", &outputPinStatus.iActRaw_mA_u16, 0, 4000);
+
+                    Send_PropOut_DebugToCanTX(outputPinStatus, RBR_CAN_1_E, 0x42, 0);
+                }
+                ImGui::End();
+            }
+
+            static bool show_SAFOUT_DEBUG_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_SAFOUT_DEBUG_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_Appearing);
+                ImGui::Begin("SAFOUT DEBUG", &show_SAFOUT_DEBUG_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     static bds_safout_ts outputPinStatus;
                     static safout_status_ts statusStruct;
@@ -2145,40 +2426,40 @@ int main(int, char**)
                     dfcStruct.dfcOut4 = (safout_dfc_te)tempDFC4;
 
                     if (dfcStruct.dfcOut1 == SAFOUT_DFC_SCB)
-                        outputPinStatus.diag_u32 |= SAFOUT_SCB;
+                        outputPinStatus.diag_u32 |= SAFOUT_SCB << 4;
                     if (dfcStruct.dfcOut1 == SAFOUT_DFC_SCG)
-                        outputPinStatus.diag_u32 |= SAFOUT_SCG;
+                        outputPinStatus.diag_u32 |= SAFOUT_SCG << 4;
                     if (dfcStruct.dfcOut1 == SAFOUT_DFC_OL)
-                        outputPinStatus.diag_u32 |= SAFOUT_OL;
+                        outputPinStatus.diag_u32 |= SAFOUT_OL << 4;
                     if (dfcStruct.dfcOut1 == SAFOUT_DFC_OC)
-                        outputPinStatus.diag_u32 |= SAFOUT_OC;
+                        outputPinStatus.diag_u32 |= SAFOUT_OC << 4;
 
                     if (dfcStruct.dfcOut2 == SAFOUT_DFC_SCB)
-                        outputPinStatus.diag_u32 |= (SAFOUT_SCB << 4);
-                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_SCG)
-                        outputPinStatus.diag_u32 |= (SAFOUT_SCG << 4);
-                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_OL)
-                        outputPinStatus.diag_u32 |= (SAFOUT_OL << 4);
-                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_OC)
-                        outputPinStatus.diag_u32 |= (SAFOUT_OC << 4);
-
-                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_SCB)
                         outputPinStatus.diag_u32 |= (SAFOUT_SCB << 8);
-                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_SCG)
+                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_SCG)
                         outputPinStatus.diag_u32 |= (SAFOUT_SCG << 8);
-                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_OL)
+                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_OL)
                         outputPinStatus.diag_u32 |= (SAFOUT_OL << 8);
-                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_OC)
+                    if (dfcStruct.dfcOut2 == SAFOUT_DFC_OC)
                         outputPinStatus.diag_u32 |= (SAFOUT_OC << 8);
 
-                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_SCB)
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_SCB)
                         outputPinStatus.diag_u32 |= (SAFOUT_SCB << 12);
-                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_SCG)
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_SCG)
                         outputPinStatus.diag_u32 |= (SAFOUT_SCG << 12);
-                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_OL)
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_OL)
                         outputPinStatus.diag_u32 |= (SAFOUT_OL << 12);
-                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_OC)
+                    if (dfcStruct.dfcOut3 == SAFOUT_DFC_OC)
                         outputPinStatus.diag_u32 |= (SAFOUT_OC << 12);
+
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_SCB)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCB << 16);
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_SCG)
+                        outputPinStatus.diag_u32 |= (SAFOUT_SCG << 16);
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_OL)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OL << 16);
+                    if (dfcStruct.dfcOut4 == SAFOUT_DFC_OC)
+                        outputPinStatus.diag_u32 |= (SAFOUT_OC << 16);
 
                     ImGui::SliderInt("iOut1", &outputPinStatus.iOut1_u16, 0, 4000);
                     ImGui::SliderInt("iOut2", &outputPinStatus.iOut2_u16, 0, 4000);
