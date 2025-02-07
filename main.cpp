@@ -2370,6 +2370,103 @@ int main(int, char**)
                 ImGui::End();
             }
 
+            static bool show_lamp_toggle_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_CAN_PropOut_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Appearing);
+                ImGui::Begin("Lamp Toggle DEBUG", &show_lamp_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    typedef enum
+                    {
+                        LAMP_OFF,
+                        LAMP_LEFT,
+                        LAMP_RIGHT
+                    } lampStatus;
+
+                    static lampStatus lampOnStatus = LAMP_OFF; // 0 is neither, 1 is left, 2 is right
+
+                    static bool leftPushButtonReleased = false;
+                    static bool rightPushButtonReleased = false;
+
+                    ImGui::Button("Left Button");
+                    if (ImGui::IsItemActive())
+                    {
+                        if (lampOnStatus == LAMP_LEFT) // if left lamp is already ON
+                        {
+                            if (leftPushButtonReleased) // turn off lamp only if have released the button
+                            {
+                                lampOnStatus = LAMP_OFF;
+                            }
+                        }
+                        else
+                        {
+                            if (leftPushButtonReleased) // turn off lamp only if have released the button
+                            {
+                                lampOnStatus = LAMP_LEFT; // if our right lamp isn't already on, turn on the right lamp
+                            }
+                        }
+                        leftPushButtonReleased = false;
+                    }
+                    else
+                    {
+                        leftPushButtonReleased = true;
+                    }
+                    ImGui::SameLine();
+                    ImGui::Button("Right Button");
+                    if (ImGui::IsItemActive())
+                    {
+                        if (lampOnStatus == LAMP_RIGHT) // if right lamp is already ON
+                        {
+                            if (rightPushButtonReleased) // turn off lamp only if have released the button
+                            {
+                                lampOnStatus = LAMP_OFF;
+                            }
+                        }
+                        else
+                        {
+                            if (rightPushButtonReleased) // turn off lamp only if have released the button
+                            {
+                                lampOnStatus = LAMP_RIGHT; // if our right lamp isn't already on, turn on the right lamp
+                            }
+                        }
+                        rightPushButtonReleased = false;
+                    }
+                    else
+                    {
+                        rightPushButtonReleased = true;
+                    }
+
+                    if (lampOnStatus == LAMP_LEFT) // TURN LEFT LAMP ON
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.5, 0.6f, 0.6f));
+                        ImGui::Button("LEFT LAMP");
+                        ImGui::PopStyleColor();
+                    }
+                    else // TURN LEFT LAMP OFF
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.5, 0.6f, 0.2f));
+                        ImGui::Button("LEFT LAMP");
+                        ImGui::PopStyleColor();
+                    }
+                    ImGui::SameLine();
+
+                    if (lampOnStatus == LAMP_RIGHT) // TURN RIGHT LAMP ON
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.5, 0.6f, 0.6f));
+                        ImGui::Button("RIGHT LAMP");
+                        ImGui::PopStyleColor();
+                    }
+                    else // TURN RIGHT LAMP OFF
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.5, 0.6f, 0.2f));
+                        ImGui::Button("RIGHT LAMP");
+                        ImGui::PopStyleColor();
+                    }
+                }
+                ImGui::End();
+            }
+
             static bool show_SAFOUT_DEBUG_window = true;
             // 3. Show a CAN endianess playground window
             if (show_SAFOUT_DEBUG_window)
