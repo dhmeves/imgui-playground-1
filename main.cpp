@@ -15,6 +15,7 @@
 #include <math.h>
 #include <fstream>
 #include "kalman.h"
+#include "sudoku.h"
 
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
@@ -33,6 +34,8 @@ int gizmoCount = 1;
 static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
 
 Kalman kalman;
+
+Sudoku sudoku;
 
 float camDistance = 8.f;
 
@@ -1492,6 +1495,11 @@ int main(int, char**)
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
     // Load Fonts
+    ImFontConfig config;
+    config.OversampleH = 5;	//	THIS DOESN'T SEEM TO DO MUCH TO BE HONEST
+    config.RasterizerMultiply = 1.5;	//	THIS MAKES TEXT APPEAR MORE CLEAR, GOOD ENOUGH FOR NOW...MAY WANT TO USE FREE TYPE IMPLEMENTATION INSTEAD
+    config.PixelSnapH = true;
+    io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/SEGOEUI.TTF", 20.0f, &config);	//	SEGOE IS WINDOWS 10/11 FONT
     // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
     // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
     // - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
@@ -2370,9 +2378,171 @@ int main(int, char**)
                 ImGui::End();
             }
 
+            static bool show_sudoku_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_sudoku_window)
+            {
+                //static int sudokuArr[9][9];
+                static bool firstTime = true;
+                if (firstTime)
+                {
+                    firstTime = false;
+                    for (int i = 0; i < sudoku.NUM_ROWS; i++)
+                    {
+                        for (int j = 0; j < sudoku.NUM_COLUMNS; j++)
+                        {
+                            sudoku.gameVals_s[i][j].realVal = 0;
+                            for (int k = 0; k < sudoku.NUM_VALUES; k++)
+                            {
+                                sudoku.gameVals_s[i][j].pencilledVals[k] = false;
+                            }
+                        }
+                    }
+                }
+                ImGui::SetNextWindowSize(ImVec2(850, 850), ImGuiCond_Appearing);
+                ImGui::Begin("Sudoku Solver", &show_sudoku_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    static bool editCells = true; // enable/disable drag sliders for editing cells
+                    ImGui::Checkbox("Edit Cell Values", &editCells);
+                    if (ImGui::Button("Fast Pencil"))
+                    {
+                        sudoku.PencilAllCells(sudoku.gameVals_s);
+                    }
+                    static ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX;
+                    if (ImGui::BeginTable("table1", sudoku.NUM_COLUMNS, flags))
+                    {
+                        for (int i = 0; i < sudoku.NUM_COLUMNS; i++)
+                        {
+                            sudoku.CheckRow(sudoku.gameVals_s, 1, 1);
+                            sudoku.CheckColumn(sudoku.gameVals_s, 1, 1);
+                            ImGui::TableSetupColumn("one", ImGuiTableColumnFlags_WidthFixed, 80.0f); // Default to 100.0f
+                        }
+                        for (int row = 0; row < sudoku.NUM_ROWS; row++)
+                        {
+                            ImGui::TableNextRow(ImGuiTableRowFlags_None, 80.0f);
+
+                            // Fill cells
+                            for (int column = 0; column < sudoku.NUM_COLUMNS; column++)
+                            {
+                                ImGui::TableSetColumnIndex(column);
+
+                                ImU32 row_bg_color = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f)); // Flat or Gradient?
+                                ImU32 row_bg_color_drk = ImGui::GetColorU32(ImVec4(0.8f, 0.8f, 0.8f, 1.0f)); // Flat or Gradient?
+                                if (((column < 3 || column > 5) && (row < 3 || row > 5)) || ((column > 2 && column < 6) && (row > 2 && row < 6)))
+                                {
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color_drk);
+                                }
+                                else
+                                {
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color);
+                                }
+                                //ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+                                ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+
+                                float dragIntCursorPosX = 0;
+                                float dragIntCursorPosY = 0;
+
+                                if (editCells || sudoku.gameVals_s[row][column].realVal)
+                                {
+                                    ImVec2 cellSize = ImGui::GetContentRegionAvail(); // Get available cell size
+                                    float dragWidgetWidth = ImGui::CalcItemWidth();
+                                    float dragWidgetHeight = 0;// ImGui::GetFrameHeight();
+
+                                    float posX = (cellSize.x - dragWidgetWidth) * 0.5f; // Center horizontally
+                                    float posY = 20;// (cellSize.y - dragWidgetHeight) * 0.5f; // Center vertically
+
+                                    posX = posX > 0 ? posX : 0; // Prevent negative offset
+                                    posY = posY > 0 ? posY : 0;
+
+                                    dragIntCursorPosX = ImGui::GetCursorPosX() + posX;
+                                    dragIntCursorPosY = ImGui::GetCursorPosY() + posY;
+
+                                    ImGui::SetCursorPosX(dragIntCursorPosX);  // Adjust horizontal position
+                                    ImGui::SetCursorPosY(dragIntCursorPosY);  // Adjust vertical position
+
+                                    int nameNum = column + row * sudoku.NUM_COLUMNS;
+
+                                    ImVec4 blankCol = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+                                    ImVec4 normalTextCol = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+                                    if (!sudoku.gameVals_s[row][column].realVal) // if the value is a zero, don't show it
+                                    {
+                                        ImGui::PushStyleColor(ImGuiCol_Text, blankCol);
+                                    }
+                                    else
+                                    {
+                                        ImGui::PushStyleColor(ImGuiCol_Text, normalTextCol);
+                                    }
+                                    std::string name = std::string("##") + std::to_string(nameNum);
+                                    if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9))
+                                    {
+                                        sudoku.PencilAllCells(sudoku.gameVals_s);
+                                    }
+                                    ImGui::PopStyleColor();
+                                }
+                                else
+                                {
+                                    static ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingMask_ | ImGuiTableFlags_NoHostExtendX;
+                                    if (ImGui::BeginTable("pencilValsTable", sudoku.NUM_COLUMNS_BOX, flags))
+                                    {
+                                        for (int i = 0; i < sudoku.NUM_COLUMNS_BOX; i++)
+                                        {
+                                            //ImGui::TableSetupColumn("one", ImGuiTableColumnFlags_WidthFixed, 16.0f); // Default to 100.0f
+                                        }
+                                        for (int cellRow = 0; cellRow < sudoku.NUM_ROWS_BOX; cellRow++)
+                                        {
+                                            ImVec2 textSize = ImGui::CalcTextSize("8");  // Get text size
+                                            ImGui::TableNextRow(ImGuiTableRowFlags_None, textSize.y + 2);
+                                            for (int cellColumn = 0; cellColumn < sudoku.NUM_COLUMNS_BOX; cellColumn++)
+                                            {
+                                                int pencilNumIdx = cellColumn + cellRow * sudoku.NUM_COLUMNS_BOX;
+                                                int pencilNum = pencilNumIdx + 1;
+                                                ImGui::TableSetColumnIndex(cellColumn);
+                                                ImU32 row_bg_color = ImGui::GetColorU32(ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+                                                ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color);
+                                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+                                                ImVec2 cellSize = ImGui::GetContentRegionAvail(); // Get available cell size
+
+                                                float posX = (cellSize.x - textSize.x) * 0.5f; // Center horizontally
+                                                float posY = 0;// (cellSize.y - textSize.y) * 0.5f; // Center vertically
+
+                                                posX = posX > 0 ? posX : 0; // Prevent negative offset
+                                                posY = posY > 0 ? posY : 0;
+
+                                                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + posY);  // Adjust vertical position
+                                                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + posX);  // Adjust horizontal position
+
+                                                int nameNum = cellColumn + cellRow * sudoku.NUM_COLUMNS_BOX;
+                                                std::string name = std::string("##") + std::to_string(nameNum);
+                                                if (sudoku.gameVals_s[row][column].pencilledVals[pencilNum])
+                                                {
+                                                    ImGui::Text("%d", pencilNum);
+                                                }
+
+                                                //ImGui::Text("%c%c", 'A' + row, '0' + column);
+                                                ImGui::PopStyleColor();
+                                            }
+                                        }
+                                        ImGui::EndTable();
+                                    }
+                                }
+                                //ImGui::Text("%c%c", 'A' + row, '0' + column);
+                                ImGui::PopStyleColor();
+                            }
+                        }
+                        ImGui::EndTable();
+                        //static int value = 0;
+                        //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+                        //ImGui::DragInt("#drag int", &value, 0.05f, 0, 9);
+                        //ImGui::PopStyleColor();
+                    }
+
+                }
+                ImGui::End();
+            }
+
             static bool show_lamp_toggle_window = true;
             // 3. Show a CAN endianess playground window
-            if (show_CAN_PropOut_window)
+            if (show_lamp_toggle_window)
             {
                 ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Appearing);
                 ImGui::Begin("Lamp Toggle DEBUG", &show_lamp_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)

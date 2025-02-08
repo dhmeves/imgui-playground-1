@@ -49,6 +49,12 @@
     <Filter Include="Header Files\kalman">
       <UniqueIdentifier>{f72fa829-c135-4e12-b49c-0729f2f20f3f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\sudoku">
+      <UniqueIdentifier>{57dc6703-9960-48b1-a4c4-a792c204a86f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\sudoku">
+      <UniqueIdentifier>{ea21439e-9834-45be-a284-1c1d578da4af}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -108,6 +114,9 @@
     <ClInclude Include="kalman\kalman.h">
       <Filter>Header Files\kalman</Filter>
     </ClInclude>
+    <ClInclude Include="sudoku\sudoku.h">
+      <Filter>Header Files\sudoku</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -157,6 +166,9 @@
     </ClCompile>
     <ClCompile Include="kalman\kalman.cpp">
       <Filter>Source Files\kalman</Filter>
+    </ClCompile>
+    <ClCompile Include="sudoku\sudoku.cpp">
+      <Filter>Source Files\sudoku</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
