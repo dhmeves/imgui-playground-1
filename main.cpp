@@ -2458,7 +2458,7 @@ int main(int, char**)
 
                                 if (editCells || sudoku.gameVals_s[row][column].realVal)
                                 {
-
+                                    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.2f));
                                     ImGui::SetCursorPosX(dragIntCursorPosX);  // Adjust horizontal position
                                     ImGui::SetCursorPosY(dragIntCursorPosY);  // Adjust vertical position
 
@@ -2479,6 +2479,7 @@ int main(int, char**)
                                     {
                                         sudoku.PencilAllCells(sudoku.gameVals_s);
                                     }
+                                    ImGui::PopStyleColor();
                                     ImGui::PopStyleColor();
                                 }
                                 else
