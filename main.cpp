@@ -2443,20 +2443,21 @@ int main(int, char**)
                                 float dragIntCursorPosX = 0;
                                 float dragIntCursorPosY = 0;
 
+                                ImVec2 cellSize = ImGui::GetContentRegionAvail(); // Get available cell size
+                                float dragWidgetWidth = ImGui::CalcItemWidth();
+                                float dragWidgetHeight = 0;// ImGui::GetFrameHeight();
+
+                                float posX = (cellSize.x - dragWidgetWidth) * 0.5f; // Center horizontally
+                                float posY = 25;// (cellSize.y - dragWidgetHeight) * 0.5f; // Center vertically
+
+                                posX = posX > 0 ? posX : 0; // Prevent negative offset
+                                posY = posY > 0 ? posY : 0;
+
+                                dragIntCursorPosX = ImGui::GetCursorPosX() + posX;
+                                dragIntCursorPosY = ImGui::GetCursorPosY() + posY;
+
                                 if (editCells || sudoku.gameVals_s[row][column].realVal)
                                 {
-                                    ImVec2 cellSize = ImGui::GetContentRegionAvail(); // Get available cell size
-                                    float dragWidgetWidth = ImGui::CalcItemWidth();
-                                    float dragWidgetHeight = 0;// ImGui::GetFrameHeight();
-
-                                    float posX = (cellSize.x - dragWidgetWidth) * 0.5f; // Center horizontally
-                                    float posY = 20;// (cellSize.y - dragWidgetHeight) * 0.5f; // Center vertically
-
-                                    posX = posX > 0 ? posX : 0; // Prevent negative offset
-                                    posY = posY > 0 ? posY : 0;
-
-                                    dragIntCursorPosX = ImGui::GetCursorPosX() + posX;
-                                    dragIntCursorPosY = ImGui::GetCursorPosY() + posY;
 
                                     ImGui::SetCursorPosX(dragIntCursorPosX);  // Adjust horizontal position
                                     ImGui::SetCursorPosY(dragIntCursorPosY);  // Adjust vertical position
@@ -2482,10 +2483,8 @@ int main(int, char**)
                                 }
                                 else
                                 {
-
-
                                     ImVec2 button1_pos = ImGui::GetCursorScreenPos();
-                                    ImVec2 button2_pos = ImVec2(button1_pos.x + 0.0f, button1_pos.y + 0.0f);
+                                    ImVec2 button2_pos = ImVec2(button1_pos.x + 14, button1_pos.y + 25);
 
                                     ImGui::SetNextItemAllowOverlap();
                                     ImGui::SetCursorScreenPos(button2_pos);
@@ -2509,7 +2508,7 @@ int main(int, char**)
                                     }
                                     ImGui::PopStyleColor();
 
-                                    ImGui::SetCursorScreenPos(button2_pos);
+                                    ImGui::SetCursorScreenPos(button1_pos);
                                     static ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingMask_ | ImGuiTableFlags_NoHostExtendX;
                                     if (ImGui::BeginTable("pencilValsTable", sudoku.NUM_COLUMNS_BOX, flags))
                                     {
