@@ -1223,7 +1223,7 @@ double RampScale(double currentVal, double setpoint, double min, double max, uin
         rampTime = 1;
     }
     double maxIncrement = (int)(((maxVal - minVal) / rampTime)* (double)timeSince); // FLOATS MAKE NEGATIVE NUMBERS SAD!
-    printf("maxIncrement: %f\n", maxIncrement);
+    //printf("maxIncrement: %f\n", maxIncrement);
     double increment = setpoint - currentVal;
     double absIncrement = increment;
     bool goUp;
@@ -2398,11 +2398,12 @@ int main(int, char**)
                             }
                         }
                     }
+                    sudoku.PencilAllCells(sudoku.gameVals_s);
                 }
                 ImGui::SetNextWindowSize(ImVec2(850, 850), ImGuiCond_Appearing);
                 ImGui::Begin("Sudoku Solver", &show_sudoku_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
-                    static bool editCells = true; // enable/disable drag sliders for editing cells
+                    static bool editCells = false; // enable/disable drag sliders for editing cells
                     ImGui::Checkbox("Edit Cell Values", &editCells);
                     if (ImGui::Button("Fast Pencil"))
                     {
@@ -2481,6 +2482,34 @@ int main(int, char**)
                                 }
                                 else
                                 {
+
+
+                                    ImVec2 button1_pos = ImGui::GetCursorScreenPos();
+                                    ImVec2 button2_pos = ImVec2(button1_pos.x + 0.0f, button1_pos.y + 0.0f);
+
+                                    ImGui::SetNextItemAllowOverlap();
+                                    ImGui::SetCursorScreenPos(button2_pos);
+
+                                    int nameNum = column + row * sudoku.NUM_COLUMNS;
+
+                                    ImVec4 blankCol = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+                                    ImVec4 normalTextCol = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+                                    if (!sudoku.gameVals_s[row][column].realVal) // if the value is a zero, don't show it
+                                    {
+                                        ImGui::PushStyleColor(ImGuiCol_Text, blankCol);
+                                    }
+                                    else
+                                    {
+                                        ImGui::PushStyleColor(ImGuiCol_Text, normalTextCol);
+                                    }
+                                    std::string name = std::string("##") + std::to_string(nameNum);
+                                    if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9))
+                                    {
+                                        sudoku.PencilAllCells(sudoku.gameVals_s);
+                                    }
+                                    ImGui::PopStyleColor();
+
+                                    ImGui::SetCursorScreenPos(button2_pos);
                                     static ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingMask_ | ImGuiTableFlags_NoHostExtendX;
                                     if (ImGui::BeginTable("pencilValsTable", sudoku.NUM_COLUMNS_BOX, flags))
                                     {
