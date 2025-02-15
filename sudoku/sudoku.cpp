@@ -14,6 +14,31 @@ bool Sudoku::CheckRow(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, in
     return false;
 }
 
+// returns true if given cell is the has the only pencilled value in given row 
+bool Sudoku::CheckRowPencilledVals (gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
+{
+    if (!gameVals_s[row][column].pencilledVals[val]) // Make sure cell is allowed to have val in it
+    {
+        return false;
+    }
+    if (CheckRow(gameVals_s, row, val)) // if the value is written in another cell in the same row, return false
+    {
+        return false;
+    }
+    
+    for (int columni = 0; columni < NUM_COLUMNS; columni++) // Actually check row for pencilled values equaling val
+    {
+        if (columni == column)
+        { // don't check ourselves 
+        }
+        else if (gameVals_s[row][columni].pencilledVals[val])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // returns true if val = realVal in given column 
 bool Sudoku::CheckColumn(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int column, int val)
 {
@@ -25,6 +50,31 @@ bool Sudoku::CheckColumn(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int colu
         }
     }
     return false;
+}
+
+// returns true if given cell is the has the only pencilled value in given column
+bool Sudoku::CheckColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
+{
+    if (!gameVals_s[row][column].pencilledVals[val]) // Make sure cell is allowed to have val in it
+    {
+        return false;
+    }
+    if (CheckColumn(gameVals_s, column, val)) // if the value is written in another cell in the same column, return false
+    {
+        return false;
+    }
+
+    for (int rowi = 0; rowi < NUM_ROWS; rowi++) // Actually check row for pencilled values equaling val
+    {
+        if (rowi == row)
+        { // don't check ourselves 
+        }
+        else if (gameVals_s[rowi][column].pencilledVals[val])
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 // returns true if val = realVal in given box 
@@ -44,19 +94,48 @@ bool Sudoku::CheckBox(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, in
     return false;
 }
 
+// returns true if given cell is the has the only pencilled value in given column
+bool Sudoku::CheckBoxPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
+{
+    if (!gameVals_s[row][column].pencilledVals[val]) // Make sure cell is allowed to have val in it
+    {
+        return false;
+    }
+    if (CheckBox(gameVals_s, row, column, val)) // if the value is written in another cell in the same column, return false
+    {
+        return false;
+    }
+
+    for (int rowi = NUM_ROWS_BOX * (row / NUM_ROWS_BOX); rowi < NUM_ROWS_BOX * (1 + row / NUM_ROWS_BOX); rowi++)
+    {
+        for (int columni = NUM_COLUMNS_BOX * (column / NUM_ROWS_BOX); columni < NUM_COLUMNS_BOX * (1 + column / NUM_COLUMNS_BOX); columni++)
+        {
+            if (rowi == row && columni == column)
+            { // don't check ourselves 
+            }
+            else if (gameVals_s[rowi][columni].pencilledVals[val])
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // returns box number given row and column... very crude but should work...
 int Sudoku::FindBoxNum(int row, int column)
 {
     return column / NUM_COLUMNS_BOX + 3 * (row / NUM_ROWS_BOX);
 }
 
-void Sudoku::PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
+bool Sudoku::PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
 {
     for (int val = 0; val < NUM_VALUES; val++)
     {
         if (!CheckRow(gameVals_s, row, val) &&
             !CheckColumn(gameVals_s, column, val) &&
-            !CheckBox(gameVals_s, row, column, val))
+            !CheckBox(gameVals_s, row, column, val) &&
+            !gameVals_s[row][column].realVal) // if a real value exists, we cannot pencil a value
         {
             gameVals_s[row][column].pencilledVals[val] = true;
         }
@@ -65,9 +144,10 @@ void Sudoku::PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, 
             gameVals_s[row][column].pencilledVals[val] = false;
         }
     }
+    return true;
 }
 
-void Sudoku::PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
+bool Sudoku::PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
 {
     for (int row = 0; row < NUM_ROWS; row++)
     {
@@ -76,4 +156,5 @@ void Sudoku::PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
             PencilCell(gameVals_s, row, column);
         }
     }
+    return true;
 }

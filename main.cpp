@@ -2379,6 +2379,7 @@ int main(int, char**)
             }
 
             static bool show_sudoku_window = true;
+            static bool allCellsPencilled = false;
             // 3. Show a CAN endianess playground window
             if (show_sudoku_window)
             {
@@ -2387,27 +2388,39 @@ int main(int, char**)
                 if (firstTime)
                 {
                     firstTime = false;
-                    for (int i = 0; i < sudoku.NUM_ROWS; i++)
+                    for (int row = 0; row < sudoku.NUM_ROWS; row++)
                     {
-                        for (int j = 0; j < sudoku.NUM_COLUMNS; j++)
+                        for (int column = 0; column < sudoku.NUM_COLUMNS; column++)
                         {
-                            sudoku.gameVals_s[i][j].realVal = 0;
-                            for (int k = 0; k < sudoku.NUM_VALUES; k++)
+                            if (row == 0) // TODO - RM: REMOVE WHEN DONE TESTING - pre-populate first row for testing
                             {
-                                sudoku.gameVals_s[i][j].pencilledVals[k] = false;
+                                sudoku.gameVals_s[row][column].realVal = column;
+                            }
+                            else if (column == 0) // TODO - RM: REMOVE WHEN DONE TESTING - pre-populate first column for testing
+                            {
+                                sudoku.gameVals_s[row][column].realVal = row;
+                            }
+                            else
+                            {
+                                sudoku.gameVals_s[row][column].realVal = 0;
+                            }
+
+                            for (int val = 0; val < sudoku.NUM_VALUES; val++)
+                            {
+                                sudoku.gameVals_s[row][column].pencilledVals[val] = false;
                             }
                         }
                     }
-                    sudoku.PencilAllCells(sudoku.gameVals_s);
+                    allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
                 }
-                ImGui::SetNextWindowSize(ImVec2(850, 850), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(850, 1000), ImGuiCond_Appearing);
                 ImGui::Begin("Sudoku Solver", &show_sudoku_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     static bool editCells = false; // enable/disable drag sliders for editing cells
                     ImGui::Checkbox("Edit Cell Values", &editCells);
                     if (ImGui::Button("Fast Pencil"))
                     {
-                        sudoku.PencilAllCells(sudoku.gameVals_s);
+                        allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
                     }
                     static ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX;
                     if (ImGui::BeginTable("table1", sudoku.NUM_COLUMNS, flags))
@@ -2477,7 +2490,7 @@ int main(int, char**)
                                     std::string name = std::string("##") + std::to_string(nameNum);
                                     if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9))
                                     {
-                                        sudoku.PencilAllCells(sudoku.gameVals_s);
+                                        allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
                                     }
                                     ImGui::PopStyleColor();
                                     ImGui::PopStyleColor();
@@ -2505,7 +2518,7 @@ int main(int, char**)
                                     std::string name = std::string("##") + std::to_string(nameNum);
                                     if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9))
                                     {
-                                        sudoku.PencilAllCells(sudoku.gameVals_s);
+                                        allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
                                     }
                                     ImGui::PopStyleColor();
 
@@ -2559,6 +2572,15 @@ int main(int, char**)
                             }
                         }
                         ImGui::EndTable();
+                        static int rowSlider = 0;
+                        static int columnSlider = 0;
+                        static int valueSlider = 0;
+                        ImGui::SliderInt("row", &rowSlider, 0, 8);
+                        ImGui::SliderInt("column", &columnSlider, 0, 8);
+                        ImGui::SliderInt("value", &valueSlider, 0, 9);
+                        ImGui::Text("CheckRowPencilledVals: %d", sudoku.CheckRowPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        ImGui::Text("CheckColumnPencilledVals: %d", sudoku.CheckColumnPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        ImGui::Text("CheckBoxPencilledVals: %d", sudoku.CheckBoxPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                         //ImGui::DragInt("#drag int", &value, 0.05f, 0, 9);

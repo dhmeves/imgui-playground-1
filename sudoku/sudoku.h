@@ -41,9 +41,12 @@ public:
     gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS];
 
     bool CheckRow(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int val);
+    bool CheckRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val);
     bool CheckColumn(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int column, int val);
+    bool CheckColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val);
     bool CheckBox(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val);
-    void PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column);
-    void PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
+    bool CheckBoxPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val);
+    bool PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column);
+    bool PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
     int FindBoxNum(int row, int column);
 };
