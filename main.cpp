@@ -2405,6 +2405,7 @@ int main(int, char**)
                                 sudoku.gameVals_s[row][column].realVal = 0;
                             }
 
+                            sudoku.gameVals_s[row][column].givenVal = false;
                             for (int val = 0; val < sudoku.NUM_VALUES; val++)
                             {
                                 sudoku.gameVals_s[row][column].pencilledVals[val] = false;
@@ -2478,19 +2479,43 @@ int main(int, char**)
                                     int nameNum = column + row * sudoku.NUM_COLUMNS;
 
                                     ImVec4 blankCol = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-                                    ImVec4 normalTextCol = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+                                    ImVec4 givenTextCol = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+                                    ImVec4 normalTextCol = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
                                     if (!sudoku.gameVals_s[row][column].realVal) // if the value is a zero, don't show it
                                     {
                                         ImGui::PushStyleColor(ImGuiCol_Text, blankCol);
                                     }
                                     else
                                     {
-                                        ImGui::PushStyleColor(ImGuiCol_Text, normalTextCol);
+                                        if (sudoku.gameVals_s[row][column].givenVal)
+                                        {
+                                            ImGui::PushStyleColor(ImGuiCol_Text, givenTextCol);
+                                        }
+                                        else
+                                        {
+                                            ImGui::PushStyleColor(ImGuiCol_Text, normalTextCol);
+                                        }
                                     }
                                     std::string name = std::string("##") + std::to_string(nameNum);
-                                    if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9))
+                                    if (sudoku.gameVals_s[row][column].givenVal && !editCells)
                                     {
+                                        ImGui::BeginDisabled();
+                                    }
+                                    if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9, "%d", ImGuiSliderFlags_AlwaysClamp))
+                                    {
+                                        if (editCells && sudoku.gameVals_s[row][column].realVal) // if we are inputting starting values, and the starting value isn't 0
+                                        {
+                                            sudoku.gameVals_s[row][column].givenVal = true;
+                                        }
+                                        else
+                                        {
+                                            sudoku.gameVals_s[row][column].givenVal = false;
+                                        }
                                         allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
+                                    }
+                                    if (sudoku.gameVals_s[row][column].givenVal && !editCells)
+                                    {
+                                        ImGui::EndDisabled();
                                     }
                                     ImGui::PopStyleColor();
                                     ImGui::PopStyleColor();

@@ -34,7 +34,8 @@ public:
 
     struct gameVals_ts
     {
-        int realVal;
+        int realVal; // value in the cell
+        bool givenVal; // if we added the number as a given value at the start of the puzzle (Used for color effects)
         bool pencilledVals[NUM_VALUES];
     };
 
