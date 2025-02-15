@@ -2429,8 +2429,8 @@ int main(int, char**)
                     {
                         for (int i = 0; i < sudoku.NUM_COLUMNS; i++)
                         {
-                            sudoku.CheckRow(sudoku.gameVals_s, 1, 1);
-                            sudoku.CheckColumn(sudoku.gameVals_s, 1, 1);
+                            //sudoku.CheckRow(sudoku.gameVals_s, 1, 1);
+                            //sudoku.CheckColumn(sudoku.gameVals_s, 1, 1);
                             ImGui::TableSetupColumn("one", ImGuiTableColumnFlags_WidthFixed, 80.0f); // Default to 100.0f
                         }
                         for (int row = 0; row < sudoku.NUM_ROWS; row++)
@@ -2444,6 +2444,7 @@ int main(int, char**)
 
                                 ImU32 row_bg_color = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f)); // Flat or Gradient?
                                 ImU32 row_bg_color_drk = ImGui::GetColorU32(ImVec4(0.8f, 0.8f, 0.8f, 1.0f)); // Flat or Gradient?
+                                ImU32 row_bg_color_err = ImGui::GetColorU32(ImVec4(1.0f, 0.8f, 0.8f, 1.0f)); // Flat or Gradient?
                                 if (((column < 3 || column > 5) && (row < 3 || row > 5)) || ((column > 2 && column < 6) && (row > 2 && row < 6)))
                                 {
                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color_drk);
@@ -2452,6 +2453,12 @@ int main(int, char**)
                                 {
                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color);
                                 }
+
+                                if (sudoku.CheckForDuplicateVals(sudoku.gameVals_s, row, column))
+                                {
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color_err);
+                                }
+
                                 //ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
                                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 

@@ -2,11 +2,14 @@
 #include "TimersAndCalculations.h"
 
 // returns true if val = realVal in given row 
-bool Sudoku::CheckRow(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int val)
+bool Sudoku::CheckRow(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
 {
-    for (int column = 0; column < NUM_COLUMNS; column++)
+    for (int columni = 0; columni < NUM_COLUMNS; columni++)
     {
-        if (gameVals_s[row][column].realVal == val)
+        if (columni == column)
+        { // don't check ourselves 
+        }
+        else if (gameVals_s[row][columni].realVal == val)
         {
             return true;
         }
@@ -21,7 +24,7 @@ bool Sudoku::CheckRowPencilledVals (gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS
     {
         return false;
     }
-    if (CheckRow(gameVals_s, row, val)) // if the value is written in another cell in the same row, return false
+    if (CheckRow(gameVals_s, row, column, val)) // if the value is written in another cell in the same row, return false
     {
         return false;
     }
@@ -40,11 +43,14 @@ bool Sudoku::CheckRowPencilledVals (gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS
 }
 
 // returns true if val = realVal in given column 
-bool Sudoku::CheckColumn(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int column, int val)
+bool Sudoku::CheckColumn(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
 {
-    for (int row = 0; row < NUM_ROWS; row++)
+    for (int rowi = 0; rowi < NUM_ROWS; rowi++)
     {
-        if (gameVals_s[row][column].realVal == val)
+        if (rowi == row)
+        {
+        }
+        else if (gameVals_s[rowi][column].realVal == val)
         {
             return true;
         }
@@ -59,7 +65,7 @@ bool Sudoku::CheckColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUM
     {
         return false;
     }
-    if (CheckColumn(gameVals_s, column, val)) // if the value is written in another cell in the same column, return false
+    if (CheckColumn(gameVals_s, row, column, val)) // if the value is written in another cell in the same column, return false
     {
         return false;
     }
@@ -85,7 +91,10 @@ bool Sudoku::CheckBox(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, in
     {
         for (int columni = NUM_COLUMNS_BOX * (column / NUM_ROWS_BOX); columni < NUM_COLUMNS_BOX * (1 + column / NUM_COLUMNS_BOX); columni++)
         {
-            if (gameVals_s[rowi][columni].realVal == val)
+            if (rowi == row && columni == column)
+            { // don't check ourselves 
+            }
+            else if (gameVals_s[rowi][columni].realVal == val)
             {
                 return true;
             }
@@ -132,8 +141,8 @@ bool Sudoku::PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, 
 {
     for (int val = 0; val < NUM_VALUES; val++)
     {
-        if (!CheckRow(gameVals_s, row, val) &&
-            !CheckColumn(gameVals_s, column, val) &&
+        if (!CheckRow(gameVals_s, row, column, val) &&
+            !CheckColumn(gameVals_s, row, column, val) &&
             !CheckBox(gameVals_s, row, column, val) &&
             !gameVals_s[row][column].realVal) // if a real value exists, we cannot pencil a value
         {
@@ -157,4 +166,18 @@ bool Sudoku::PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
         }
     }
     return true;
+}
+
+bool Sudoku::CheckForDuplicateVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
+{
+    if (gameVals_s[row][column].realVal) // only check if our value isn't 0 (no value)
+    {
+        if (CheckRow(gameVals_s, row, column, gameVals_s[row][column].realVal) ||
+            CheckColumn(gameVals_s, row, column, gameVals_s[row][column].realVal) ||
+            CheckBox(gameVals_s, row, column, gameVals_s[row][column].realVal))
+        {
+            return true;
+        }
+    }
+    return false;
 }
