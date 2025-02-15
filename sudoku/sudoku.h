@@ -51,4 +51,6 @@ public:
     bool PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
     int FindBoxNum(int row, int column);
     bool CheckForDuplicateVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column);
+    bool SolveCellSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, bool & pencilled);
+    bool SolveSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
 };

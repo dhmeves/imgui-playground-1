@@ -144,7 +144,8 @@ bool Sudoku::PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, 
         if (!CheckRow(gameVals_s, row, column, val) &&
             !CheckColumn(gameVals_s, row, column, val) &&
             !CheckBox(gameVals_s, row, column, val) &&
-            !gameVals_s[row][column].realVal) // if a real value exists, we cannot pencil a value
+            !gameVals_s[row][column].realVal && // if a real value exists, we cannot pencil a value
+            val) // DO NOT PENCIL 0!
         {
             gameVals_s[row][column].pencilledVals[val] = true;
         }
@@ -168,6 +169,7 @@ bool Sudoku::PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
     return true;
 }
 
+// Checks for duplicate values in the same row, column, and box as the given cell (for error checking)
 bool Sudoku::CheckForDuplicateVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
 {
     if (gameVals_s[row][column].realVal) // only check if our value isn't 0 (no value)
@@ -180,4 +182,52 @@ bool Sudoku::CheckForDuplicateVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]
         }
     }
     return false;
+}
+
+
+bool Sudoku::SolveCellSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, bool & pencilled)
+{
+    if (!pencilled)
+    {
+        pencilled = PencilAllCells(gameVals_s); // make sure all of our pencilled vals are correct before trying to solve
+    }
+    for (int val = 0; val < NUM_VALUES; val++)
+    {
+        if (CheckRowPencilledVals(gameVals_s, row, column, val))
+        {
+            gameVals_s[row][column].realVal = val;
+            pencilled = PencilAllCells(gameVals_s); // if we find that we can solve this cell, make sure to update pencilled values
+            return true;
+        }
+        if (CheckColumnPencilledVals(gameVals_s, row, column, val))
+        {
+            gameVals_s[row][column].realVal = val;
+            pencilled = PencilAllCells(gameVals_s);
+            return true;
+        }
+        if (CheckBoxPencilledVals(gameVals_s, row, column, val))
+        {
+            gameVals_s[row][column].realVal = val;
+            pencilled = PencilAllCells(gameVals_s);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Sudoku::SolveSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
+{
+    bool solved = false; // if ANY cells are solved, return true
+    bool pencilled = PencilAllCells(gameVals_s);
+    for (int row = 0; row < NUM_ROWS; row++)
+    {
+        for (int column = 0; column < NUM_COLUMNS; column++)
+        {
+            if (SolveCellSimple(gameVals_s, row, column, pencilled))
+            {
+                solved = true;
+            }
+        }
+    }
+    return solved;
 }

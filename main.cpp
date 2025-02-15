@@ -2618,7 +2618,10 @@ int main(int, char**)
                         ImGui::Text("CheckRowPencilledVals: %d", sudoku.CheckRowPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
                         ImGui::Text("CheckColumnPencilledVals: %d", sudoku.CheckColumnPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
                         ImGui::Text("CheckBoxPencilledVals: %d", sudoku.CheckBoxPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
-
+                        if (ImGui::Button("Solve Simple!"))
+                        {
+                            sudoku.SolveSimple(sudoku.gameVals_s);
+                        }
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                         //ImGui::DragInt("#drag int", &value, 0.05f, 0, 9);
