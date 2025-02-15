@@ -6,6 +6,8 @@
 #include <random>
 #include <chrono>
 
+#include "json/json.h"
+
 
 
 enum cellVals_e
@@ -32,6 +34,9 @@ public:
     const static int NUM_ROWS_BOX = 3;
     const static int NUM_COLUMNS_BOX = 3;
 
+    const char* fileExtDot = ".sudoku";	//	FILE EXTENSION FOR SUDOKU GAMES
+    const char* fileExt = "sudoku";	//	FILE EXTENSION FOR SUDOKU GAMES
+
     struct gameVals_ts
     {
         int realVal; // value in the cell
@@ -53,4 +58,6 @@ public:
     bool CheckForDuplicateVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column);
     bool SolveCellSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, bool & pencilled);
     bool SolveSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
+    void SerializeSudokuGameData(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], Json::Value& sudokuJsonFile);
+    void DeserializeSudokuGameData(Json::Value sudokuJsonFile, gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
 };

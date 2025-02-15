@@ -55,6 +55,18 @@
     <Filter Include="Source Files\sudoku">
       <UniqueIdentifier>{ea21439e-9834-45be-a284-1c1d578da4af}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\json">
+      <UniqueIdentifier>{d1f39139-f9fa-4003-8db4-4978ea550720}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\json">
+      <UniqueIdentifier>{5af419b1-7da2-4ead-ac0e-106294b2f2c1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\NativeFileDialog">
+      <UniqueIdentifier>{949dde22-4a24-4542-8fbe-e16ffe2dddeb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\NativeFileDialog">
+      <UniqueIdentifier>{5f0494cb-1d3c-43c7-92cf-b4928daa2e16}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -117,6 +129,18 @@
     <ClInclude Include="sudoku\sudoku.h">
       <Filter>Header Files\sudoku</Filter>
     </ClInclude>
+    <ClInclude Include="json\json\json.h">
+      <Filter>Header Files\json</Filter>
+    </ClInclude>
+    <ClInclude Include="json\json\json-forwards.h">
+      <Filter>Header Files\json</Filter>
+    </ClInclude>
+    <ClInclude Include="NativeFileDialog\nfd.h">
+      <Filter>Header Files\NativeFileDialog</Filter>
+    </ClInclude>
+    <ClInclude Include="NativeFileDialog\nfd_common.h">
+      <Filter>Header Files\NativeFileDialog</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -169,6 +193,15 @@
     </ClCompile>
     <ClCompile Include="sudoku\sudoku.cpp">
       <Filter>Source Files\sudoku</Filter>
+    </ClCompile>
+    <ClCompile Include="json\jsoncpp.cpp">
+      <Filter>Source Files\json</Filter>
+    </ClCompile>
+    <ClCompile Include="NativeFileDialog\nfd_common.c">
+      <Filter>Source Files\NativeFileDialog</Filter>
+    </ClCompile>
+    <ClCompile Include="NativeFileDialog\nfd_win.cpp">
+      <Filter>Source Files\NativeFileDialog</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

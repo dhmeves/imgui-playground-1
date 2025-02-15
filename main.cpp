@@ -17,6 +17,11 @@
 #include "kalman.h"
 #include "sudoku.h"
 
+//	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
+#include "nfd.h"			//	https://github.com/mlabbe/nativefiledialog
+//	ADD JSON SUPPORT 
+#include <json/json.h>			//	https://github.com/open-source-parsers/jsoncpp
+
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
 
@@ -28,6 +33,9 @@
 #define sint16 int16_t
 #define uint8 uint8_t
 #define sint8 int8_t
+
+// --- FILE OPERATION STUFF ---
+const size_t MAXIMUM_PATH_SIZE = 1024;	//	TYPICAL WINDOWS MAX IS 260 CHARS, CAN BE EXTENDED TO 32767 CHARS IN SPECIAL CASES...BUT I DON'T THINK THAT'S GOING TO BE AN ISSUE
 
 bool useWindow = true;
 int gizmoCount = 1;
@@ -115,37 +123,51 @@ typedef struct
  * @return success status of block.
  */
 
-//int ExtractValueFromCanTelegram(can_isobus_info messageData, int spnInfoIndex, uint64_t* output)
-//{
-//    uint8_t byteIndex = messageData.spns[spnInfoIndex].byte - 1;                                                              // These values start from 1, not 0
-//    uint8_t bitIndex = messageData.spns[spnInfoIndex].bit - 1;                                                                // These values start from 1, not 0
-//    if ((BITS_PER_BYTE * byteIndex + bitIndex + messageData.spns[spnInfoIndex].len) > (messageData.lenMax * BITS_PER_BYTE))   // Check if we are asking for something outside of telegram's allocation
-//        return -1;                                                                                                            // Return FSC_ERR if we are going to overrun the array
-//
-//    uint64_t mask = 0;
-//    uint8_t i = 0;
-//    for (i; i < messageData.spns[spnInfoIndex].len; i++)
-//    {
-//        mask |= (1 << i);
-//    }
-//    uint64_t val = 0;
-//    uint8_t numBytes = 1 + (bitIndex + messageData.spns[spnInfoIndex].len - 1) / BITS_PER_BYTE; // How many bytes does this information span?
-//    i = 0;
-//    for (i; i < numBytes; i++)
-//    {
-//        val |= messageData.data[byteIndex + i] << (BITS_PER_BYTE * i);
-//    }
-//    if (numBytes == 1) // If we are contained in one single byte, little-endianess makes things a little stupid, so read backwards
-//    {
-//        int8_t byteMaskShift = 8 - (bitIndex + messageData.spns[spnInfoIndex].len);
-//        *output = (val >> byteMaskShift) & mask;
-//    }
-//    else
-//    {
-//        *output = (val >> bitIndex) & mask;
-//    }
-//    return 0;
-//}
+ //int ExtractValueFromCanTelegram(can_isobus_info messageData, int spnInfoIndex, uint64_t* output)
+ //{
+ //    uint8_t byteIndex = messageData.spns[spnInfoIndex].byte - 1;                                                              // These values start from 1, not 0
+ //    uint8_t bitIndex = messageData.spns[spnInfoIndex].bit - 1;                                                                // These values start from 1, not 0
+ //    if ((BITS_PER_BYTE * byteIndex + bitIndex + messageData.spns[spnInfoIndex].len) > (messageData.lenMax * BITS_PER_BYTE))   // Check if we are asking for something outside of telegram's allocation
+ //        return -1;                                                                                                            // Return FSC_ERR if we are going to overrun the array
+ //
+ //    uint64_t mask = 0;
+ //    uint8_t i = 0;
+ //    for (i; i < messageData.spns[spnInfoIndex].len; i++)
+ //    {
+ //        mask |= (1 << i);
+ //    }
+ //    uint64_t val = 0;
+ //    uint8_t numBytes = 1 + (bitIndex + messageData.spns[spnInfoIndex].len - 1) / BITS_PER_BYTE; // How many bytes does this information span?
+ //    i = 0;
+ //    for (i; i < numBytes; i++)
+ //    {
+ //        val |= messageData.data[byteIndex + i] << (BITS_PER_BYTE * i);
+ //    }
+ //    if (numBytes == 1) // If we are contained in one single byte, little-endianess makes things a little stupid, so read backwards
+ //    {
+ //        int8_t byteMaskShift = 8 - (bitIndex + messageData.spns[spnInfoIndex].len);
+ //        *output = (val >> byteMaskShift) & mask;
+ //    }
+ //    else
+ //    {
+ //        *output = (val >> bitIndex) & mask;
+ //    }
+ //    return 0;
+ //}
+
+
+int ParseJson(std::string JsonStr, Json::Value& parsedJson)
+{
+    int output = -1;
+    Json::Reader reader;
+    bool parsingSuccessful = reader.parse(JsonStr.c_str(), parsedJson);
+    if (!parsingSuccessful)
+    {
+        printf("FAILED TO PARSE! %d\n", reader.getFormattedErrorMessages());
+        return output;
+    }
+    return 0;
+}
 
 int InsertValueToCanTelegram(can_isobus_info* messageData, int spnInfoIndex, uint64_t input)
 {
@@ -1222,7 +1244,7 @@ double RampScale(double currentVal, double setpoint, double min, double max, uin
     {
         rampTime = 1;
     }
-    double maxIncrement = (int)(((maxVal - minVal) / rampTime)* (double)timeSince); // FLOATS MAKE NEGATIVE NUMBERS SAD!
+    double maxIncrement = (int)(((maxVal - minVal) / rampTime) * (double)timeSince); // FLOATS MAKE NEGATIVE NUMBERS SAD!
     //printf("maxIncrement: %f\n", maxIncrement);
     double increment = setpoint - currentVal;
     double absIncrement = increment;
@@ -2621,6 +2643,102 @@ int main(int, char**)
                         if (ImGui::Button("Solve Simple!"))
                         {
                             sudoku.SolveSimple(sudoku.gameVals_s);
+                        }
+                        if (ImGui::Button("Save Sudoku Game"))
+                        {
+                            Json::Value sudokuJsonFile;
+                            Json::StreamWriterBuilder builder;
+                            builder["indentation"] = "    ";	//	4 spaces for indent
+                            nfdchar_t* savePath = (nfdchar_t*)std::malloc(MAXIMUM_PATH_SIZE);	//	ALLOCATE ENOUGH MEMORY FOR AS LONG AS A PATH AS WE EVER EXPECT
+                            std::string savePathStr;
+                            nfdresult_t result = NFD_ERROR;	//	DEFAULT TO ERROR STATE CAUSE THAT'S WHAT NDF_SaveDialog DOES! :D
+                            result = NFD_SaveDialog(sudoku.fileExt, NULL, &savePath);
+                            printf("result: %d\n", result);
+                            if (result == NFD_OKAY)	//	IF WE ALREADY SAVED AS, JUST SAVE IT WITHOUT PROMPTING NFD
+                            {
+                                sudoku.SerializeSudokuGameData(sudoku.gameVals_s, sudokuJsonFile);
+                                printf("Success!\n");
+                                printf("%s\n", savePath);
+                                LPCSTR extensionFound = PathFindExtensionA(savePath);
+                                printf("EXTENSION FOUND: %s\n", extensionFound);
+                                LPCSTR SUDOKU_EXTENSION = sudoku.fileExtDot;
+                                if (strcmp(extensionFound, SUDOKU_EXTENSION))
+                                {
+                                    printf("WE FOUND DIFFERENCES!\n");
+                                    printf("strlen total: %d\n", strlen(savePath) + strlen(SUDOKU_EXTENSION));
+                                    savePathStr = savePath + (std::string)SUDOKU_EXTENSION;
+                                    //strcat(savePath, (nfdchar_t*)SUDOKU_EXTENSION);
+                                }
+                                else
+                                {
+                                    savePathStr = savePath;	//	IF THE CORRECT EXTENSION ALREADY EXISTS, JUST PLAIN COPY IT!
+                                }
+                                // START OF ENCRYPTION JSON
+                                std::string jsonStr = Json::writeString(builder, sudokuJsonFile);	//	CONVERT JSON TO STRING FOR USE WITH ENCRYPTION
+                                // ENCRYPTION STUFF
+                                std::vector<uint8_t> cipherText;
+                                std::string decipherText;
+                                uint8_t iv[16];
+                                long len = size(jsonStr);
+
+                                std::ofstream outfile(savePathStr.c_str(), std::ios::binary);
+                                if (outfile.is_open())
+                                {
+                                    outfile.write(jsonStr.c_str(), len);
+                                    outfile.close();
+                                }
+                            }
+                            else if (result == NFD_CANCEL)
+                            {
+                                printf("User pressed cancel.\n");
+                            }
+                            else
+                            {
+                                printf("Error: %s\n", NFD_GetError());
+                            }
+                        }
+                        if (ImGui::Button("Load Sudoku Game"))
+                        {
+                            //	START NATIVE FILE DIALOG OPEN
+                            const nfdchar_t* defaultPath = (nfdchar_t*)"::{031E4825-7B94-4DC3-B131-E946B44C8DD5}\Documents.library-ms";
+                            nfdchar_t* openPath = NULL;
+                            nfdresult_t result = NFD_OpenDialog(sudoku.fileExt, NULL/*defaultPath*/, &openPath);
+                            if (result == NFD_OKAY)
+                            {
+                                //bool fileVerified = false;
+                                printf("%s\n", openPath);
+                                {
+                                    // START OF DECRYPTION STUFF
+                                    // READING FROM FILE STUFF
+                                    //std::vector <uint8_t> encrypted_data;
+                                    //uint8_t readIV[SIZE_OF_AES_BLOCK] = { 0 };
+                                    //long readLength = 0;
+                                    //uint16_t readCrc = 0;
+                                    //std::string decipherText;
+                                    //ReadEncStrFromFile(encrypted_data, readIV, openPath, readCrc, readLength);
+
+                                    std::ifstream infile(openPath);
+                                    std::stringstream jsonStr;
+                                    jsonStr << infile.rdbuf();
+                                    //std::string jsonStr = jsonSS.str();
+                                    Json::Value readJson;
+                                    if (ParseJson(jsonStr.str(), readJson) == 0)
+                                    {
+                                        printf("JSON encode/decode SUCCESS!\n");
+                                    }
+                                    sudoku.DeserializeSudokuGameData(readJson, sudoku.gameVals_s);
+                                    //strcpy(saveAsPath, openPath);
+
+                                }
+                            }
+                            else if (result == NFD_CANCEL)
+                            {
+                                printf("User pressed cancel.\n");
+                            }
+                            else
+                            {
+                                printf("Error: %s\n", NFD_GetError());
+                            }
                         }
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));

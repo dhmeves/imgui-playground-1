@@ -231,3 +231,37 @@ bool Sudoku::SolveSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
     }
     return solved;
 }
+
+void Sudoku::SerializeSudokuGameData(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], Json::Value& sudokuJsonFile)
+{
+    for (int row = 0; row < NUM_ROWS; row++)
+    {
+        for (int column = 0; column < NUM_COLUMNS; column++)
+        {
+            std::string rowName = "row" + std::to_string(row);
+            std::string columnName = "col" + std::to_string(column);
+            sudokuJsonFile[rowName][columnName]["realVal"] = gameVals_s[row][column].realVal;
+            sudokuJsonFile[rowName][columnName]["givenVal"] = gameVals_s[row][column].givenVal;
+        }
+    }
+}
+
+void Sudoku::DeserializeSudokuGameData(Json::Value sudokuJsonFile, gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
+{
+    for (int row = 0; row < NUM_ROWS; row++)
+    {
+        for (int column = 0; column < NUM_COLUMNS; column++)
+        {
+            std::string rowStr = "row" + std::to_string(row);
+            std::string columnStr = "col" + std::to_string(column);
+            if (sudokuJsonFile[(rowStr.c_str())][(columnStr.c_str())].isMember("realVal"))
+            {
+                gameVals_s[row][column].realVal = sudokuJsonFile[(rowStr.c_str())][(columnStr.c_str())]["realVal"].asInt();
+            }
+            if (sudokuJsonFile[(rowStr.c_str())][(columnStr.c_str())].isMember("givenVal"))
+            {
+                gameVals_s[row][column].givenVal = sudokuJsonFile[(rowStr.c_str())][(columnStr.c_str())]["givenVal"].asBool();
+            }
+        }
+    }
+}
