@@ -1499,7 +1499,7 @@ int main(int, char**)
     config.OversampleH = 5;	//	THIS DOESN'T SEEM TO DO MUCH TO BE HONEST
     config.RasterizerMultiply = 1.5;	//	THIS MAKES TEXT APPEAR MORE CLEAR, GOOD ENOUGH FOR NOW...MAY WANT TO USE FREE TYPE IMPLEMENTATION INSTEAD
     config.PixelSnapH = true;
-    io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/SEGOEUI.TTF", 20.0f, &config);	//	SEGOE IS WINDOWS 10/11 FONT
+    //io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeuib.TTF", 24.0f, &config);	//	SEGOE IS WINDOWS 10/11 FONT
     // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
     // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
     // - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
@@ -1512,7 +1512,8 @@ int main(int, char**)
     //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
     //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
     //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-    //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
+    ImFont* bodyTextFont = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.TTF", 20.0f, nullptr);
+    ImFont* headerTextFont = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeuib.TTF", 34.0f, nullptr);
     //IM_ASSERT(font != nullptr);
 
     // Our state
@@ -2462,7 +2463,7 @@ int main(int, char**)
                                 float dragWidgetHeight = 0;// ImGui::GetFrameHeight();
 
                                 float posX = (cellSize.x - dragWidgetWidth) * 0.5f; // Center horizontally
-                                float posY = 25;// (cellSize.y - dragWidgetHeight) * 0.5f; // Center vertically
+                                float posY = 20;// (cellSize.y - dragWidgetHeight) * 0.5f; // Center vertically
 
                                 posX = posX > 0 ? posX : 0; // Prevent negative offset
                                 posY = posY > 0 ? posY : 0;
@@ -2472,7 +2473,7 @@ int main(int, char**)
 
                                 if (editCells || sudoku.gameVals_s[row][column].realVal)
                                 {
-                                    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.2f));
+                                    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                                     ImGui::SetCursorPosX(dragIntCursorPosX);  // Adjust horizontal position
                                     ImGui::SetCursorPosY(dragIntCursorPosY);  // Adjust vertical position
 
@@ -2501,6 +2502,7 @@ int main(int, char**)
                                     {
                                         ImGui::BeginDisabled();
                                     }
+                                    ImGui::PushFont(headerTextFont);
                                     if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9, "%d", ImGuiSliderFlags_AlwaysClamp))
                                     {
                                         if (editCells && sudoku.gameVals_s[row][column].realVal) // if we are inputting starting values, and the starting value isn't 0
@@ -2513,6 +2515,7 @@ int main(int, char**)
                                         }
                                         allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
                                     }
+                                    ImGui::PopFont();
                                     if (sudoku.gameVals_s[row][column].givenVal && !editCells)
                                     {
                                         ImGui::EndDisabled();
@@ -2540,11 +2543,13 @@ int main(int, char**)
                                     {
                                         ImGui::PushStyleColor(ImGuiCol_Text, normalTextCol);
                                     }
+                                    ImGui::PushFont(headerTextFont);
                                     std::string name = std::string("##") + std::to_string(nameNum);
                                     if (ImGui::DragInt(name.c_str(), &sudoku.gameVals_s[row][column].realVal, 0.05f, 0, 9))
                                     {
                                         allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
                                     }
+                                    ImGui::PopFont();
                                     ImGui::PopStyleColor();
 
                                     ImGui::SetCursorScreenPos(button1_pos);
@@ -2606,6 +2611,7 @@ int main(int, char**)
                         ImGui::Text("CheckRowPencilledVals: %d", sudoku.CheckRowPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
                         ImGui::Text("CheckColumnPencilledVals: %d", sudoku.CheckColumnPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
                         ImGui::Text("CheckBoxPencilledVals: %d", sudoku.CheckBoxPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                         //ImGui::DragInt("#drag int", &value, 0.05f, 0, 9);
