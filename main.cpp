@@ -2416,20 +2416,9 @@ int main(int, char**)
                     {
                         for (int column = 0; column < sudoku.NUM_COLUMNS; column++)
                         {
-                            if (row == 0) // TODO - RM: REMOVE WHEN DONE TESTING - pre-populate first row for testing
-                            {
-                                sudoku.gameVals_s[row][column].realVal = column;
-                            }
-                            else if (column == 0) // TODO - RM: REMOVE WHEN DONE TESTING - pre-populate first column for testing
-                            {
-                                sudoku.gameVals_s[row][column].realVal = row;
-                            }
-                            else
-                            {
-                                sudoku.gameVals_s[row][column].realVal = 0;
-                            }
-
+                            sudoku.gameVals_s[row][column].realVal = 0;
                             sudoku.gameVals_s[row][column].givenVal = false;
+
                             for (int val = 0; val < sudoku.NUM_VALUES; val++)
                             {
                                 sudoku.gameVals_s[row][column].pencilledVals[val] = false;
@@ -2443,7 +2432,31 @@ int main(int, char**)
                 {
                     static bool editCells = false; // enable/disable drag sliders for editing cells
                     ImGui::Text(savePathStr.c_str());
-                    if (ImGui::Button("Save Sudoku Game"))
+                    if (ImGui::Button("New Game"))
+                    {
+                        ImGui::OpenPopup("New Game Confirmation");
+                    }
+                    // Always center this window when appearing
+                    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+                    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+                    if (ImGui::BeginPopupModal("New Game Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+                    {
+                        ImGui::Text("Are you sure you want to start a new game?");
+                        if (ImGui::Button("OK", ImVec2(120, 0)))
+                        {
+                            firstTime = true; // reset all values
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+                        {
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndPopup();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Save Game"))
                     {
                         Json::Value sudokuJsonFile;
                         Json::StreamWriterBuilder builder;
@@ -2490,7 +2503,7 @@ int main(int, char**)
                         }
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Load Sudoku Game"))
+                    if (ImGui::Button("Load Game"))
                     {
                         //	START NATIVE FILE DIALOG OPEN
                         const nfdchar_t* defaultPath = (nfdchar_t*)"::{031E4825-7B94-4DC3-B131-E946B44C8DD5}\Documents.library-ms";

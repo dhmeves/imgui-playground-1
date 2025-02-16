@@ -131,6 +131,45 @@ bool Sudoku::CheckBoxPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]
     return true;
 }
 
+// returns true if only one pencilled value exists in a given cell, automatically assigns the realVal to the pencilled value
+bool Sudoku::CheckCellSingletPencilledVal(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
+{
+    int counter = 0;
+    int singletVal = 0;
+    for (int val = 0; val < NUM_VALUES; val++)
+    {
+        if (gameVals_s[row][column].pencilledVals[val])
+        {
+            counter++;
+            singletVal = val;
+        }
+    }
+    if (counter == 1)
+    {
+        gameVals_s[row][column].realVal = singletVal;
+        return true;
+    }
+    return false;
+}
+
+// returns true if any singlets are found + converted
+bool Sudoku::CheckSingletPencilledVal(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
+{
+    bool foundSinglet = false;
+    for (int row = 0; row < NUM_ROWS; row++)
+    {
+        for (int column = 0; column < NUM_COLUMNS; column++)
+        {
+            if (CheckCellSingletPencilledVal(gameVals_s, row, column))
+            {
+                foundSinglet = true;
+                PencilAllCells(gameVals_s); // if we found a singlet, redo our pencil!
+            }
+        }
+    }
+    return foundSinglet;
+}
+
 // returns box number given row and column... very crude but should work...
 int Sudoku::FindBoxNum(int row, int column)
 {
@@ -191,6 +230,7 @@ bool Sudoku::SolveCellSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int 
     {
         pencilled = PencilAllCells(gameVals_s); // make sure all of our pencilled vals are correct before trying to solve
     }
+    CheckSingletPencilledVal(gameVals_s);
     for (int val = 0; val < NUM_VALUES; val++)
     {
         if (CheckRowPencilledVals(gameVals_s, row, column, val))
