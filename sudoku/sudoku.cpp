@@ -86,7 +86,7 @@ bool Sudoku::CheckColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUM
 // returns true if val = realVal in given box 
 bool Sudoku::CheckBox(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
 {
-    int box = FindBoxNum(row, column);
+    //int box = FindBoxNum(row, column);
     for (int rowi = NUM_ROWS_BOX * (row / NUM_ROWS_BOX); rowi < NUM_ROWS_BOX * (1 + row / NUM_ROWS_BOX); rowi++)
     {
         for (int columni = NUM_COLUMNS_BOX * (column / NUM_ROWS_BOX); columni < NUM_COLUMNS_BOX * (1 + column / NUM_COLUMNS_BOX); columni++)
