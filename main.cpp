@@ -36,6 +36,7 @@
 
 // --- FILE OPERATION STUFF ---
 const size_t MAXIMUM_PATH_SIZE = 1024;	//	TYPICAL WINDOWS MAX IS 260 CHARS, CAN BE EXTENDED TO 32767 CHARS IN SPECIAL CASES...BUT I DON'T THINK THAT'S GOING TO BE AN ISSUE
+std::string savePathStr = ""; // global cause we're going to reference it in a more general scope
 
 bool useWindow = true;
 int gizmoCount = 1;
@@ -2441,11 +2442,92 @@ int main(int, char**)
                 ImGui::Begin("Sudoku Solver", &show_sudoku_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     static bool editCells = false; // enable/disable drag sliders for editing cells
-                    ImGui::Checkbox("Edit Cell Values", &editCells);
-                    if (ImGui::Button("Fast Pencil"))
+                    ImGui::Text(savePathStr.c_str());
+                    if (ImGui::Button("Save Sudoku Game"))
                     {
-                        allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
+                        Json::Value sudokuJsonFile;
+                        Json::StreamWriterBuilder builder;
+                        builder["indentation"] = "    ";	//	4 spaces for indent
+                        nfdchar_t* savePath = (nfdchar_t*)std::malloc(MAXIMUM_PATH_SIZE);	//	ALLOCATE ENOUGH MEMORY FOR AS LONG AS A PATH AS WE EVER EXPECT
+                        nfdresult_t result = NFD_ERROR;	//	DEFAULT TO ERROR STATE CAUSE THAT'S WHAT NDF_SaveDialog DOES! :D
+                        result = NFD_SaveDialog(sudoku.fileExt, NULL, &savePath);
+                        printf("result: %d\n", result);
+                        if (result == NFD_OKAY)	//	IF WE ALREADY SAVED AS, JUST SAVE IT WITHOUT PROMPTING NFD
+                        {
+                            sudoku.SerializeSudokuGameData(sudoku.gameVals_s, sudokuJsonFile);
+                            printf("Success!\n");
+                            printf("%s\n", savePath);
+                            LPCSTR extensionFound = PathFindExtensionA(savePath);
+                            printf("EXTENSION FOUND: %s\n", extensionFound);
+                            LPCSTR SUDOKU_EXTENSION = sudoku.fileExtDot;
+                            if (strcmp(extensionFound, SUDOKU_EXTENSION))
+                            {
+                                printf("WE FOUND DIFFERENCES!\n");
+                                printf("strlen total: %d\n", strlen(savePath) + strlen(SUDOKU_EXTENSION));
+                                savePathStr = savePath + (std::string)SUDOKU_EXTENSION;
+                            }
+                            else
+                            {
+                                savePathStr = savePath;	//	IF THE CORRECT EXTENSION ALREADY EXISTS, JUST PLAIN COPY IT!
+                            }
+                            std::string jsonStr = Json::writeString(builder, sudokuJsonFile);	//	CONVERT JSON TO STRING FOR WRITING
+                            long len = size(jsonStr);
+
+                            std::ofstream outfile(savePathStr.c_str(), std::ios::binary);
+                            if (outfile.is_open())
+                            {
+                                outfile.write(jsonStr.c_str(), len);
+                                outfile.close();
+                            }
+                        }
+                        else if (result == NFD_CANCEL)
+                        {
+                            printf("User pressed cancel.\n");
+                        }
+                        else
+                        {
+                            printf("Error: %s\n", NFD_GetError());
+                        }
                     }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Load Sudoku Game"))
+                    {
+                        //	START NATIVE FILE DIALOG OPEN
+                        const nfdchar_t* defaultPath = (nfdchar_t*)"::{031E4825-7B94-4DC3-B131-E946B44C8DD5}\Documents.library-ms";
+                        nfdchar_t* openPath = NULL;
+                        nfdresult_t result = NFD_OpenDialog(sudoku.fileExt, NULL/*defaultPath*/, &openPath);
+                        if (result == NFD_OKAY)
+                        {
+                            //bool fileVerified = false;
+                            printf("%s\n", openPath);
+                            {
+                                std::ifstream infile(openPath);
+                                std::stringstream jsonStr;
+                                jsonStr << infile.rdbuf();
+                                Json::Value readJson;
+                                if (ParseJson(jsonStr.str(), readJson) == 0)
+                                {
+                                    printf("JSON encode/decode SUCCESS!\n");
+                                }
+                                sudoku.DeserializeSudokuGameData(readJson, sudoku.gameVals_s);
+                                savePathStr = openPath;
+                            }
+                        }
+                        else if (result == NFD_CANCEL)
+                        {
+                            printf("User pressed cancel.\n");
+                        }
+                        else
+                        {
+                            printf("Error: %s\n", NFD_GetError());
+                        }
+                    }
+                    ImGui::SameLine();
+                    ImGui::Checkbox("Edit Cell Values", &editCells);
+                    //if (ImGui::Button("Fast Pencil"))
+                    //{
+                    //    allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
+                    //}
                     static ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX;
                     if (ImGui::BeginTable("table1", sudoku.NUM_COLUMNS, flags))
                     {
@@ -2631,115 +2713,28 @@ int main(int, char**)
                             }
                         }
                         ImGui::EndTable();
-                        static int rowSlider = 0;
-                        static int columnSlider = 0;
-                        static int valueSlider = 0;
-                        ImGui::SliderInt("row", &rowSlider, 0, 8);
-                        ImGui::SliderInt("column", &columnSlider, 0, 8);
-                        ImGui::SliderInt("value", &valueSlider, 0, 9);
-                        ImGui::Text("CheckRowPencilledVals: %d", sudoku.CheckRowPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
-                        ImGui::Text("CheckColumnPencilledVals: %d", sudoku.CheckColumnPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
-                        ImGui::Text("CheckBoxPencilledVals: %d", sudoku.CheckBoxPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        //static int rowSlider = 0;
+                        //static int columnSlider = 0;
+                        //static int valueSlider = 0;
+                        //ImGui::SliderInt("row", &rowSlider, 0, 8);
+                        //ImGui::SliderInt("column", &columnSlider, 0, 8);
+                        //ImGui::SliderInt("value", &valueSlider, 0, 9);
+                        //ImGui::Text("CheckRowPencilledVals: %d", sudoku.CheckRowPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        //ImGui::Text("CheckColumnPencilledVals: %d", sudoku.CheckColumnPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        //ImGui::Text("CheckBoxPencilledVals: %d", sudoku.CheckBoxPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        static int numSimpleSolveIterations = 0;
                         if (ImGui::Button("Solve Simple!"))
                         {
-                            sudoku.SolveSimple(sudoku.gameVals_s);
+                            bool solving = true;
+                            int count = 0;
+                            while (solving && count < 100) // let's cap the number of iterations to 100
+                            {
+                                solving = sudoku.SolveSimple(sudoku.gameVals_s); // SolveSimple() returns false when it didn't make any moves
+                                count++;
+                            }
+                            numSimpleSolveIterations = count;
                         }
-                        if (ImGui::Button("Save Sudoku Game"))
-                        {
-                            Json::Value sudokuJsonFile;
-                            Json::StreamWriterBuilder builder;
-                            builder["indentation"] = "    ";	//	4 spaces for indent
-                            nfdchar_t* savePath = (nfdchar_t*)std::malloc(MAXIMUM_PATH_SIZE);	//	ALLOCATE ENOUGH MEMORY FOR AS LONG AS A PATH AS WE EVER EXPECT
-                            std::string savePathStr;
-                            nfdresult_t result = NFD_ERROR;	//	DEFAULT TO ERROR STATE CAUSE THAT'S WHAT NDF_SaveDialog DOES! :D
-                            result = NFD_SaveDialog(sudoku.fileExt, NULL, &savePath);
-                            printf("result: %d\n", result);
-                            if (result == NFD_OKAY)	//	IF WE ALREADY SAVED AS, JUST SAVE IT WITHOUT PROMPTING NFD
-                            {
-                                sudoku.SerializeSudokuGameData(sudoku.gameVals_s, sudokuJsonFile);
-                                printf("Success!\n");
-                                printf("%s\n", savePath);
-                                LPCSTR extensionFound = PathFindExtensionA(savePath);
-                                printf("EXTENSION FOUND: %s\n", extensionFound);
-                                LPCSTR SUDOKU_EXTENSION = sudoku.fileExtDot;
-                                if (strcmp(extensionFound, SUDOKU_EXTENSION))
-                                {
-                                    printf("WE FOUND DIFFERENCES!\n");
-                                    printf("strlen total: %d\n", strlen(savePath) + strlen(SUDOKU_EXTENSION));
-                                    savePathStr = savePath + (std::string)SUDOKU_EXTENSION;
-                                    //strcat(savePath, (nfdchar_t*)SUDOKU_EXTENSION);
-                                }
-                                else
-                                {
-                                    savePathStr = savePath;	//	IF THE CORRECT EXTENSION ALREADY EXISTS, JUST PLAIN COPY IT!
-                                }
-                                // START OF ENCRYPTION JSON
-                                std::string jsonStr = Json::writeString(builder, sudokuJsonFile);	//	CONVERT JSON TO STRING FOR USE WITH ENCRYPTION
-                                // ENCRYPTION STUFF
-                                std::vector<uint8_t> cipherText;
-                                std::string decipherText;
-                                uint8_t iv[16];
-                                long len = size(jsonStr);
-
-                                std::ofstream outfile(savePathStr.c_str(), std::ios::binary);
-                                if (outfile.is_open())
-                                {
-                                    outfile.write(jsonStr.c_str(), len);
-                                    outfile.close();
-                                }
-                            }
-                            else if (result == NFD_CANCEL)
-                            {
-                                printf("User pressed cancel.\n");
-                            }
-                            else
-                            {
-                                printf("Error: %s\n", NFD_GetError());
-                            }
-                        }
-                        if (ImGui::Button("Load Sudoku Game"))
-                        {
-                            //	START NATIVE FILE DIALOG OPEN
-                            const nfdchar_t* defaultPath = (nfdchar_t*)"::{031E4825-7B94-4DC3-B131-E946B44C8DD5}\Documents.library-ms";
-                            nfdchar_t* openPath = NULL;
-                            nfdresult_t result = NFD_OpenDialog(sudoku.fileExt, NULL/*defaultPath*/, &openPath);
-                            if (result == NFD_OKAY)
-                            {
-                                //bool fileVerified = false;
-                                printf("%s\n", openPath);
-                                {
-                                    // START OF DECRYPTION STUFF
-                                    // READING FROM FILE STUFF
-                                    //std::vector <uint8_t> encrypted_data;
-                                    //uint8_t readIV[SIZE_OF_AES_BLOCK] = { 0 };
-                                    //long readLength = 0;
-                                    //uint16_t readCrc = 0;
-                                    //std::string decipherText;
-                                    //ReadEncStrFromFile(encrypted_data, readIV, openPath, readCrc, readLength);
-
-                                    std::ifstream infile(openPath);
-                                    std::stringstream jsonStr;
-                                    jsonStr << infile.rdbuf();
-                                    //std::string jsonStr = jsonSS.str();
-                                    Json::Value readJson;
-                                    if (ParseJson(jsonStr.str(), readJson) == 0)
-                                    {
-                                        printf("JSON encode/decode SUCCESS!\n");
-                                    }
-                                    sudoku.DeserializeSudokuGameData(readJson, sudoku.gameVals_s);
-                                    //strcpy(saveAsPath, openPath);
-
-                                }
-                            }
-                            else if (result == NFD_CANCEL)
-                            {
-                                printf("User pressed cancel.\n");
-                            }
-                            else
-                            {
-                                printf("Error: %s\n", NFD_GetError());
-                            }
-                        }
+                        ImGui::Text("number of iterations to solve: %d", numSimpleSolveIterations);
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                         //ImGui::DragInt("#drag int", &value, 0.05f, 0, 9);
