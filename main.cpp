@@ -2525,6 +2525,7 @@ int main(int, char**)
                                 sudoku.DeserializeSudokuGameData(readJson, sudoku.gameVals_s);
                                 savePathStr = openPath;
                             }
+                            sudoku.PencilAllCells(sudoku.gameVals_s);
                         }
                         else if (result == NFD_CANCEL)
                         {

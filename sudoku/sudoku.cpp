@@ -208,6 +208,33 @@ bool Sudoku::PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
     return true;
 }
 
+// TODO - RM: SHOULD REALLY JUST DO A ROW-BY-ROW TECHNIQUE, LOGGING THE BOX WHERE EACH PENCILLED VALUE IS AND CHECKING IF 1 OF THE 3 BOXES HAVE THE PENCILLED VALUE INSTEAD OF DOING IT THE WAY IT'S DONE BELOW:
+int Sudoku::CheckBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
+{
+    int rowCounts[NUM_ROWS_BOX] = { 0 };
+    for (int rowi = NUM_ROWS_BOX * (row / NUM_ROWS_BOX); rowi < NUM_ROWS_BOX * (1 + row / NUM_ROWS_BOX); rowi++)
+    {
+        for (int columni = NUM_COLUMNS_BOX * (column / NUM_ROWS_BOX); columni < NUM_COLUMNS_BOX * (1 + column / NUM_COLUMNS_BOX); columni++)
+        {
+            if (gameVals_s[rowi][columni].pencilledVals)
+            {
+                rowCounts[rowi]++;
+            }
+        }
+    }
+    if (ThreeWayXOR(rowCounts[0], rowCounts[1], rowCounts[2]))
+    {
+        for (int i = 0; i < NUM_ROWS_BOX; i++)
+        {
+            if (rowCounts[i])
+            {
+                return i + (NUM_ROWS_BOX * (row / NUM_ROWS_BOX));
+            }
+        }
+    }
+    return -1; // if we don't have a Singlet box-row pencilled, return -1
+}
+
 // Checks for duplicate values in the same row, column, and box as the given cell (for error checking)
 bool Sudoku::CheckForDuplicateVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
 {

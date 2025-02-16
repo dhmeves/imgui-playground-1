@@ -3,6 +3,10 @@
 //uint64_t PROGRAM_START = 0;
 auto startTime = std::chrono::steady_clock::now(); //steady clock is great for timers, not great for epoch
 
+bool ThreeWayXOR(int a, int b, int c)
+{
+    return (bool(a) + bool(b) + bool(c)) == 1; // convert to bool and check if there is a single input that's true
+}
 
 float fsc_fabs(float f)
 {
