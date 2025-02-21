@@ -176,6 +176,18 @@ int Sudoku::FindBoxNum(int row, int column)
     return column / NUM_COLUMNS_BOX + 3 * (row / NUM_ROWS_BOX);
 }
 
+// returns box row number given row... very crude but should work...
+int Sudoku::FindBoxRowNum(int row)
+{
+    return (row / NUM_ROWS_BOX);
+}
+
+// returns box row number given row... very crude but should work...
+int Sudoku::FindBoxColumnNum(int column)
+{
+    return (column / NUM_COLUMNS_BOX);
+}
+
 bool Sudoku::PencilCell(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
 {
     for (int val = 0; val < NUM_VALUES; val++)
@@ -209,30 +221,46 @@ bool Sudoku::PencilAllCells(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
 }
 
 // TODO - RM: SHOULD REALLY JUST DO A ROW-BY-ROW TECHNIQUE, LOGGING THE BOX WHERE EACH PENCILLED VALUE IS AND CHECKING IF 1 OF THE 3 BOXES HAVE THE PENCILLED VALUE INSTEAD OF DOING IT THE WAY IT'S DONE BELOW:
-int Sudoku::CheckBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
+int Sudoku::CheckBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
 {
-    int rowCounts[NUM_ROWS_BOX] = { 0 };
-    for (int rowi = NUM_ROWS_BOX * (row / NUM_ROWS_BOX); rowi < NUM_ROWS_BOX * (1 + row / NUM_ROWS_BOX); rowi++)
+
+    for (int val = 1; val < NUM_VALUES; val++)
     {
-        for (int columni = NUM_COLUMNS_BOX * (column / NUM_ROWS_BOX); columni < NUM_COLUMNS_BOX * (1 + column / NUM_COLUMNS_BOX); columni++)
+        for (int rowi = 0; rowi < NUM_ROWS; rowi++)
         {
-            if (gameVals_s[rowi][columni].pencilledVals)
+            bool boxPencilled[3] = { 0 };
+            for (int columni = 0; columni < NUM_COLUMNS; columni++)
             {
-                rowCounts[rowi]++;
+                int boxNum = -1;
+                if (gameVals_s[rowi][columni].pencilledVals[val])
+                {
+                    boxNum = FindBoxRowNum(rowi);
+                }
+                if (boxNum != -1)
+                {
+                    boxPencilled[boxNum] = true;
+                }
+            }
+            int boxSingletRowPencilled = ThreeWayXOR(boxPencilled[0], boxPencilled[1], boxPencilled[2]); // if only one box has a pencilled value, remove the value from the other rows in the same box
+            if (boxSingletRowPencilled)
+            {
+                for (int boxRowi = (boxSingletRowPencilled - 1) * NUM_ROWS_BOX; boxRowi < (boxSingletRowPencilled) * NUM_ROWS_BOX; boxRowi++)
+                {
+                    for (int boxColumni = (boxSingletRowPencilled - 1) * NUM_COLUMNS_BOX; boxColumni < (boxSingletRowPencilled) * NUM_COLUMNS_BOX; boxColumni++)
+                    {
+                        if (boxRowi == rowi)
+                        { // do nothing if we're in the row with the singlet row
+                        }
+                        else
+                        {
+                            gameVals_s[boxRowi][boxColumni].pencilledVals[val] = false;
+                        }
+                    }
+                }
             }
         }
     }
-    if (ThreeWayXOR(rowCounts[0], rowCounts[1], rowCounts[2]))
-    {
-        for (int i = 0; i < NUM_ROWS_BOX; i++)
-        {
-            if (rowCounts[i])
-            {
-                return i + (NUM_ROWS_BOX * (row / NUM_ROWS_BOX));
-            }
-        }
-    }
-    return -1; // if we don't have a Singlet box-row pencilled, return -1
+    return 0;
 }
 
 // Checks for duplicate values in the same row, column, and box as the given cell (for error checking)

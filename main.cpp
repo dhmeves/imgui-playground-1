@@ -2749,6 +2749,11 @@ int main(int, char**)
                             numSimpleSolveIterations = count;
                         }
                         ImGui::Text("number of iterations to solve: %d", numSimpleSolveIterations);
+
+                        if (ImGui::Button("SolveRowPencilledVals"))
+                        {
+                            sudoku.CheckBoxRowPencilledVals(sudoku.gameVals_s);
+                        }
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                         //ImGui::DragInt("#drag int", &value, 0.05f, 0, 9);
