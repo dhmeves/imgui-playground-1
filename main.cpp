@@ -2747,9 +2747,9 @@ int main(int, char**)
                         //ImGui::SliderInt("row", &rowSlider, 0, 8);
                         //ImGui::SliderInt("column", &columnSlider, 0, 8);
                         //ImGui::SliderInt("value", &valueSlider, 0, 9);
-                        //ImGui::Text("CheckRowPencilledVals: %d", sudoku.CheckRowPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
-                        //ImGui::Text("CheckColumnPencilledVals: %d", sudoku.CheckColumnPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
-                        //ImGui::Text("CheckBoxPencilledVals: %d", sudoku.CheckBoxPencilledVals(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        //ImGui::Text("CheckIfOnlyValInRowPencilled: %d", sudoku.CheckIfOnlyValInRowPencilled(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        //ImGui::Text("CheckIfOnlyValInColumnPencilled: %d", sudoku.CheckIfOnlyValInColumnPencilled(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
+                        //ImGui::Text("CheckIfOnlyValInBoxPencilled: %d", sudoku.CheckIfOnlyValInBoxPencilled(sudoku.gameVals_s, rowSlider, columnSlider, valueSlider));
                         static int numSimpleSolveIterations = 0;
                         if (ImGui::Button("Solve Simple!"))
                         {

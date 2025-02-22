@@ -3,6 +3,18 @@
 //uint64_t PROGRAM_START = 0;
 auto startTime = std::chrono::steady_clock::now(); //steady clock is great for timers, not great for epoch
 
+//  COUNTS HOW MANY BITS ARE EQUAL TO 1 IN A VARIABLE WITH LENGTH UP TO 32 BITS
+//  SHAMELESSLY STOLEN FROM THE INTERNET
+int NumberOfSetBits(uint32_t i)
+{
+    // Java: use int, and use >>> instead of >>. Or use Integer.bitCount()
+    // C or C++: use uint32_t
+    i = i - ((i >> 1) & 0x55555555);                // add pairs of bits
+    i = (i & 0x33333333) + ((i >> 2) & 0x33333333); // quads
+    i = (i + (i >> 4)) & 0x0F0F0F0F;                // groups of 8
+    return (i * 0x01010101) >> 24;                  // horizontal sum of bytes
+}
+
 int ThreeWayXOR(int a, int b, int c)
 {
     if ((bool(a) + bool(b) + bool(c)) == 1) // convert to bool and check if there is a single input that's true

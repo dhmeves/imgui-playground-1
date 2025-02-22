@@ -50,6 +50,7 @@ static const uint16_t CRCTABLE[256] = {
   0x8201, 0x42c0, 0x4380, 0x8341, 0x4100, 0x81c1, 0x8081, 0x4040
 };
 
+int NumberOfSetBits(uint32_t i);
 int ThreeWayXOR(int a, int b, int c);
 float fsc_fabs(float f);
 float fsc_sqrt(float x);

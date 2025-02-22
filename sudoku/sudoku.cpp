@@ -18,7 +18,7 @@ bool Sudoku::CheckRow(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, in
 }
 
 // returns true if given cell is the has the only pencilled value in given row 
-bool Sudoku::CheckRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
+bool Sudoku::CheckIfOnlyValInRowPencilled(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
 {
     if (!gameVals_s[row][column].pencilledVals[val]) // Make sure cell is allowed to have val in it
     {
@@ -59,7 +59,7 @@ bool Sudoku::CheckColumn(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row,
 }
 
 // returns true if given cell is the has the only pencilled value in given column
-bool Sudoku::CheckColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
+bool Sudoku::CheckIfOnlyValInColumnPencilled(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
 {
     if (!gameVals_s[row][column].pencilledVals[val]) // Make sure cell is allowed to have val in it
     {
@@ -104,7 +104,7 @@ bool Sudoku::CheckBox(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, in
 }
 
 // returns true if given cell is the has the only pencilled value in given column
-bool Sudoku::CheckBoxPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
+bool Sudoku::CheckIfOnlyValInBoxPencilled(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val)
 {
     if (!gameVals_s[row][column].pencilledVals[val]) // Make sure cell is allowed to have val in it
     {
@@ -406,6 +406,47 @@ int Sudoku::CheckOutsideBoxColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][
     return numRemovedPencils;
 }
 
+// TODO - RM: NOT FINSHED YET! Checks for hidden pairs in a given row - a slightly more complex technique for whittling away pencil values
+int Sudoku::CheckRowHiddenPair(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
+{
+    // first check if hidden pair only occur in two of the same cells
+    for (int rowi = 0; rowi < NUM_ROWS; rowi++)
+    {
+        bool hiddenPairFound = false;
+        int pairVals[NUM_VALUES] = { 0 };
+        for (int val = 1; val < NUM_VALUES; val++)
+        {
+            int count = 0;
+            for (int columni = 0; columni < NUM_COLUMNS; columni++)
+            {
+                if (gameVals_s[rowi][columni].pencilledVals[val])
+                {
+                    pairVals[val] = 1 < columni; // bitshift to the column number pencilled values are in for easy comparison later
+                }
+            }
+            if (NumberOfSetBits(pairVals[val] != NUM_PAIR))
+            {
+                pairVals[val] = 0; // if it's not a pair we don't want to keep the column data
+            }
+        }
+        for (int val = 1; val < NUM_VALUES; val++)
+        {
+            if (pairVals[val] == NUM_PAIR)
+            {
+                for (int val2 = val + 1; val2 < NUM_VALUES; val2++) // start val2 one after val since we don't want to check when val2 = val
+                {
+                    if (pairVals[val] == pairVals[val2])
+                    {
+                        hiddenPairFound = true; // if the two pairVals match, that means we found a hidden pair in this row
+                    }
+                }
+            }
+        }
+    }
+    // second check if hidden pair are the only pencilled values available in two cells
+    return 0;
+}
+
 // Checks for duplicate values in the same row, column, and box as the given cell (for error checking)
 bool Sudoku::CheckForDuplicateVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column)
 {
@@ -431,19 +472,19 @@ bool Sudoku::SolveCellSimple(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int 
     CheckSingletPencilledVal(gameVals_s);
     for (int val = 0; val < NUM_VALUES; val++)
     {
-        if (CheckRowPencilledVals(gameVals_s, row, column, val))
+        if (CheckIfOnlyValInRowPencilled(gameVals_s, row, column, val))
         {
             gameVals_s[row][column].realVal = val;
             pencilled = PencilAllCells(gameVals_s); // if we find that we can solve this cell, make sure to update pencilled values
             return true;
         }
-        if (CheckColumnPencilledVals(gameVals_s, row, column, val))
+        if (CheckIfOnlyValInColumnPencilled(gameVals_s, row, column, val))
         {
             gameVals_s[row][column].realVal = val;
             pencilled = PencilAllCells(gameVals_s);
             return true;
         }
-        if (CheckBoxPencilledVals(gameVals_s, row, column, val))
+        if (CheckIfOnlyValInBoxPencilled(gameVals_s, row, column, val))
         {
             gameVals_s[row][column].realVal = val;
             pencilled = PencilAllCells(gameVals_s);
