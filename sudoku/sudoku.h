@@ -30,9 +30,13 @@ public:
     const static int NUM_VALUES = 10; // we're counting 0 (blank) as a value here, since it's a state
     const static int NUM_ROWS = 9;
     const static int NUM_COLUMNS = 9;
+    const static int NUM_BOXES = 9;
 
     const static int NUM_ROWS_BOX = 3;
     const static int NUM_COLUMNS_BOX = 3;
+
+    const static int NUM_BOXES_ROW = 3;
+    const static int NUM_BOXES_COLUMN = 3;
 
     const char* fileExtDot = ".sudoku";	//	FILE EXTENSION FOR SUDOKU GAMES
     const char* fileExt = "sudoku";	//	FILE EXTENSION FOR SUDOKU GAMES
@@ -52,6 +56,8 @@ public:
     bool CheckColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val);
     bool CheckBox(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val);
     int CheckBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
+    int CheckOutsideBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
+    int CheckOutsideBoxColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
     int CheckBoxColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS]);
     bool CheckBoxPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column, int val);
     bool CheckCellSingletPencilledVal(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS], int row, int column);

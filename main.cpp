@@ -2764,13 +2764,41 @@ int main(int, char**)
                         }
                         ImGui::Text("number of iterations to solve: %d", numSimpleSolveIterations);
 
+                        if (ImGui::Button("Fast Pencil"))
+                        {
+                            sudoku.PencilAllCells(sudoku.gameVals_s);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Fast Complex Pencil"))
+                        {
+                            sudoku.PencilAllCells(sudoku.gameVals_s);
+                            int pencilsRemoved = 1;
+                            while (pencilsRemoved) // keep iterating through in case we find an opening
+                            {
+                                pencilsRemoved = 0;
+                                pencilsRemoved += sudoku.CheckBoxRowPencilledVals(sudoku.gameVals_s);
+                                pencilsRemoved += sudoku.CheckBoxColumnPencilledVals(sudoku.gameVals_s);
+                                pencilsRemoved += sudoku.CheckOutsideBoxRowPencilledVals(sudoku.gameVals_s);
+                                pencilsRemoved += sudoku.CheckOutsideBoxColumnPencilledVals(sudoku.gameVals_s);
+                            }
+                        }
                         if (ImGui::Button("SolveRowPencilledVals"))
                         {
                             sudoku.CheckBoxRowPencilledVals(sudoku.gameVals_s);
                         }
+                        ImGui::SameLine();
                         if (ImGui::Button("SolveColumnPencilledVals"))
                         {
                             sudoku.CheckBoxColumnPencilledVals(sudoku.gameVals_s);
+                        }
+                        if (ImGui::Button("SolveOutsideRowPencilledVals"))
+                        {
+                            sudoku.CheckOutsideBoxRowPencilledVals(sudoku.gameVals_s);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("SolveOutsideColumnPencilledVals"))
+                        {
+                            sudoku.CheckOutsideBoxColumnPencilledVals(sudoku.gameVals_s);
                         }
                         ImGui::SliderInt("highlight Value", &highlightedVals, 0, 9);
                         //static int value = 0;
