@@ -2542,6 +2542,7 @@ int main(int, char**)
                     //{
                     //    allCellsPencilled = sudoku.PencilAllCells(sudoku.gameVals_s);
                     //}
+                    static int highlightedVals = 0;
                     static ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX;
                     if (ImGui::BeginTable("table1", sudoku.NUM_COLUMNS, flags))
                     {
@@ -2560,9 +2561,10 @@ int main(int, char**)
                             {
                                 ImGui::TableSetColumnIndex(column);
 
-                                ImU32 row_bg_color = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f)); // Flat or Gradient?
-                                ImU32 row_bg_color_drk = ImGui::GetColorU32(ImVec4(0.8f, 0.8f, 0.8f, 1.0f)); // Flat or Gradient?
-                                ImU32 row_bg_color_err = ImGui::GetColorU32(ImVec4(1.0f, 0.8f, 0.8f, 1.0f)); // Flat or Gradient?
+                                ImU32 row_bg_color = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+                                ImU32 row_bg_color_drk = ImGui::GetColorU32(ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+                                ImU32 row_bg_color_hilite = ImGui::GetColorU32(ImVec4(0.717f, 0.717f, 1.0f, 1.0f));
+                                ImU32 row_bg_color_err = ImGui::GetColorU32(ImVec4(1.0f, 0.8f, 0.8f, 1.0f));
                                 if (((column < 3 || column > 5) && (row < 3 || row > 5)) || ((column > 2 && column < 6) && (row > 2 && row < 6)))
                                 {
                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color_drk);
@@ -2570,6 +2572,11 @@ int main(int, char**)
                                 else
                                 {
                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color);
+                                }
+
+                                if (highlightedVals == sudoku.gameVals_s[row][column].realVal && sudoku.gameVals_s[row][column].realVal) // highlight cell value
+                                {
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color_hilite);
                                 }
 
                                 if (sudoku.CheckForDuplicateVals(sudoku.gameVals_s, row, column))
@@ -2695,6 +2702,13 @@ int main(int, char**)
                                                 int pencilNum = pencilNumIdx + 1;
                                                 ImGui::TableSetColumnIndex(cellColumn);
                                                 ImU32 row_bg_color = ImGui::GetColorU32(ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+                                                if (highlightedVals == pencilNum)
+                                                {
+                                                    if (sudoku.gameVals_s[row][column].pencilledVals[pencilNum])
+                                                    {
+                                                        row_bg_color = ImGui::GetColorU32(ImVec4(0.717f, 0.717f, 1.0f, 1.0f)); // only highlight if pencilled
+                                                    }
+                                                }
                                                 ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, row_bg_color);
                                                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
                                                 ImVec2 cellSize = ImGui::GetContentRegionAvail(); // Get available cell size
@@ -2754,6 +2768,7 @@ int main(int, char**)
                         {
                             sudoku.CheckBoxRowPencilledVals(sudoku.gameVals_s);
                         }
+                        ImGui::SliderInt("highlight Value", &highlightedVals, 0, 9);
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                         //ImGui::DragInt("#drag int", &value, 0.05f, 0, 9);
