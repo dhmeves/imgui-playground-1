@@ -263,69 +263,6 @@ int Sudoku::CheckBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMN
     return 0;
 }
 
-// TODO - RM: THIS NEEDS TO BE FINISHED UP, CHECKS EACH BOX TO SEE IF A ROW IN A GIVEN BOX IS THE ONLY ROW WITH PENCILLED VALUES IN, IF IT IS, THE OTHER BOXES IN THE BOX'S ROW SHOULD NOT CONTAIN THAT VALUE
-int Sudoku::CheckOutsideBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
-{
-    for (int val = 1; val < NUM_VALUES; val++)
-    {
-        for (int boxNum = 0; boxNum < NUM_BOXES; boxNum++)
-        {
-            int boxStartRow = boxNum / NUM_BOXES_ROW;
-            int boxStartColumn = boxNum % NUM_BOXES_COLUMN;
-            for (int boxRowi = boxStartRow; boxRowi < boxStartRow + NUM_ROWS_BOX; boxRowi++)
-            {
-                for (int boxColumni = boxStartColumn; boxColumni < boxStartColumn + NUM_COLUMNS_BOX; boxColumni++)
-                {
-
-                }
-            }
-        }
-    }
-
-
-
-
-
-    for (int val = 1; val < NUM_VALUES; val++)
-    {
-        for (int rowi = 0; rowi < NUM_ROWS; rowi++)
-        {
-            bool boxPencilled[3] = { 0 };
-            for (int columni = 0; columni < NUM_COLUMNS; columni++)
-            {
-                int boxNum = -1;
-                if (gameVals_s[rowi][columni].pencilledVals[val])
-                {
-                    boxNum = FindBoxColumnNum(columni);
-                }
-                if (boxNum != -1)
-                {
-                    boxPencilled[boxNum] = true;
-                }
-            }
-            int boxSingletRowPencilled = ThreeWayXOR(boxPencilled[0], boxPencilled[1], boxPencilled[2]); // if only one box has a pencilled value, remove the value from the other rows in the same box
-            int rowBox = FindBoxRowNum(rowi);
-            if (boxSingletRowPencilled)
-            {
-                for (int boxRowi = (rowBox)*NUM_ROWS_BOX; boxRowi < (rowBox + 1) * NUM_ROWS_BOX; boxRowi++)
-                {
-                    for (int boxColumni = (boxSingletRowPencilled - 1) * NUM_COLUMNS_BOX; boxColumni < (boxSingletRowPencilled)*NUM_COLUMNS_BOX; boxColumni++)
-                    {
-                        if (boxRowi == rowi)
-                        { // do nothing if we're in the row with the singlet row
-                        }
-                        else
-                        {
-                            gameVals_s[boxRowi][boxColumni].pencilledVals[val] = false;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return 0;
-}
-
 int Sudoku::CheckBoxColumnPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMNS])
 {
 

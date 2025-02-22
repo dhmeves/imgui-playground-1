@@ -2768,6 +2768,10 @@ int main(int, char**)
                         {
                             sudoku.CheckBoxRowPencilledVals(sudoku.gameVals_s);
                         }
+                        if (ImGui::Button("SolveColumnPencilledVals"))
+                        {
+                            sudoku.CheckBoxColumnPencilledVals(sudoku.gameVals_s);
+                        }
                         ImGui::SliderInt("highlight Value", &highlightedVals, 0, 9);
                         //static int value = 0;
                         //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
