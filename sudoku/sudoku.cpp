@@ -234,7 +234,7 @@ int Sudoku::CheckBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMN
                 int boxNum = -1;
                 if (gameVals_s[rowi][columni].pencilledVals[val])
                 {
-                    boxNum = FindBoxRowNum(rowi);
+                    boxNum = FindBoxColumnNum(columni);
                 }
                 if (boxNum != -1)
                 {
@@ -242,9 +242,10 @@ int Sudoku::CheckBoxRowPencilledVals(gameVals_ts gameVals_s[NUM_ROWS][NUM_COLUMN
                 }
             }
             int boxSingletRowPencilled = ThreeWayXOR(boxPencilled[0], boxPencilled[1], boxPencilled[2]); // if only one box has a pencilled value, remove the value from the other rows in the same box
+            int rowBox = FindBoxRowNum(rowi);
             if (boxSingletRowPencilled)
             {
-                for (int boxRowi = (boxSingletRowPencilled - 1) * NUM_ROWS_BOX; boxRowi < (boxSingletRowPencilled) * NUM_ROWS_BOX; boxRowi++)
+                for (int boxRowi = (rowBox) * NUM_ROWS_BOX; boxRowi < (rowBox + 1) * NUM_ROWS_BOX; boxRowi++)
                 {
                     for (int boxColumni = (boxSingletRowPencilled - 1) * NUM_COLUMNS_BOX; boxColumni < (boxSingletRowPencilled) * NUM_COLUMNS_BOX; boxColumni++)
                     {
