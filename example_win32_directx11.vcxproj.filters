@@ -67,6 +67,12 @@
     <Filter Include="Source Files\NativeFileDialog">
       <UniqueIdentifier>{5f0494cb-1d3c-43c7-92cf-b4928daa2e16}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\kinematics">
+      <UniqueIdentifier>{c852729c-cd0e-43d1-9fc7-54704bae8fb2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\kinematics">
+      <UniqueIdentifier>{3a63a34a-46c8-417e-87d5-78411b1111d7}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -141,6 +147,9 @@
     <ClInclude Include="NativeFileDialog\nfd_common.h">
       <Filter>Header Files\NativeFileDialog</Filter>
     </ClInclude>
+    <ClInclude Include="kinematics\FABRIK2D.h">
+      <Filter>Header Files\kinematics</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -202,6 +211,9 @@
     </ClCompile>
     <ClCompile Include="NativeFileDialog\nfd_win.cpp">
       <Filter>Source Files\NativeFileDialog</Filter>
+    </ClCompile>
+    <ClCompile Include="kinematics\FABRIK2D.cpp">
+      <Filter>Source Files\kinematics</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

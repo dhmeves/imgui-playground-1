@@ -15,6 +15,7 @@
 #include <math.h>
 #include <fstream>
 #include "kalman.h"
+#include "FABRIK2D.h"
 #include "sudoku.h"
 
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
@@ -45,6 +46,9 @@ static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
 Kalman kalman;
 
 Sudoku sudoku;
+
+int lengths[] = { 100, 75, 25 };
+static Fabrik2D fabrik2D(4, lengths);
 
 float camDistance = 8.f;
 
@@ -1186,40 +1190,6 @@ float CalculatePitchEuler(float x, float y, float z)
     return pitch;
 }
 
-/**
- * @brief Slope-intercept linear scaling function, option to clip output to minOut~maxOut range.  y = mx + b.
- *        Note that `minOut` does NOT have to be the smaller number if a inverse slope is required. Execution
- *        time: approx 8us when `clipOutput` = `TRUE`.
- *
- * @param[in] input input val
- * @param[in] minIn minimum input val
- * @param[in] maxIn maximum input val
- * @param[in] minOut minimum output val
- * @param[in] maxOut maximum output val
- * @param[in] clipOutput `TRUE`: if output is found to be outside the range of minOut~maxOut, clip to the max. or min.
- *                    `FALSE`: Scale with no adjustments if output is outside range.
- * @return scaled output
- */
-double scale(double input, double minIn, double maxIn, double minOut, double maxOut, bool clipOutput)
-{
-    if (minIn == maxIn)
-    {
-        return 0.0; // let's not divide by 0 :)
-    }
-    double slope = ((maxOut - minOut) / (maxIn - minIn));
-    double intercept = (minOut - (minIn * slope));
-    double output = ((slope * input) + intercept);
-    if (clipOutput) //  DON'T ALLOW OUTPUT OUTSIDE RANGE
-    {
-        double minVal = (minOut < maxOut) ? minOut : maxOut; //	FIND MIN/MAX VALUES - INCASE WE ARE INVERSELY SCALING
-        double maxVal = (minOut > maxOut) ? minOut : maxOut;
-        if (output > maxVal)
-            output = maxVal;
-        if (output < minVal)
-            output = minVal;
-    }
-    return output;
-}
 
 /**
  * @brief millisecond-time-based function that calculates an output given a current value, a setpoint, value range,
@@ -2807,6 +2777,57 @@ int main(int, char**)
                         //ImGui::PopStyleColor();
                     }
 
+                }
+                ImGui::End();
+            }
+
+            static bool show_kinematics_toggle_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_kinematics_toggle_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_Appearing);
+                ImGui::Begin("Kinematics", &show_kinematics_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    fabrik2D.setTolerance(0.5f);
+                    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                    static ImVec2 armPoints[4];
+                    static ImVec4 colf = ImVec4(1.0f, 1.0f, 0.4f, 1.0f);
+                    const ImU32 col = ImColor(colf);
+                    static float thickness = 2.0f;
+                    float th = thickness;
+                    static ImVec2 inverseKinematics;
+                    static float toolAngle;
+                    ImGui::SliderFloat("thickness", &thickness, 0, 100);
+                    ImGui::SliderFloat("point0", &armPoints[0].x, 0, 100);
+                    ImGui::SliderFloat("point1", &armPoints[0].y, 0, 100);
+                    ImGui::SliderFloat("point2", &armPoints[1].x, 0, 100);
+                    ImGui::SliderFloat("point3", &armPoints[1].y, 0, 100);
+                    ImGui::SliderFloat("X-Inverse Kinematics", &inverseKinematics.x, 0, 200);
+                    ImGui::SliderFloat("Y-Inverse Kinematics", &inverseKinematics.y, 0, 200);
+                    ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
+                    ImGui::Text("angle0 %f", fabrik2D.getAngle(0)* RAD_TO_DEG);
+                    ImGui::Text("angle1 %f", fabrik2D.getAngle(1)* RAD_TO_DEG);
+                    ImGui::Text("angle2 %f", fabrik2D.getAngle(2)* RAD_TO_DEG);
+                    const ImVec2 startPos = ImGui::GetCursorScreenPos();
+
+                    static float ang = 0;
+                    static int counter = 0;
+                    uint64_t prevTime = 0;
+                    if (Timer(prevTime, 10, true))
+                    {
+                        ang = ((int)(ang + 1)) % 360;
+                    }
+                    float radius = 30;
+                    float x_offset = 100;
+                    float y_offset = 150;
+                    // Move x and y in a circular motion
+                    float x = x_offset + radius * cos(ang * 1000 / 57296);
+                    float y = y_offset + radius * sin(ang * 1000 / 57296);
+                    draw_list->AddLine(ImVec2(startPos.x + armPoints[0].x, startPos.y + armPoints[0].y), ImVec2(startPos.x + armPoints[1].x, startPos.y + armPoints[1].y), col, th);
+                    fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y + fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col, th);
                 }
                 ImGui::End();
             }

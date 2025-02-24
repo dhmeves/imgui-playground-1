@@ -3,6 +3,37 @@
 //uint64_t PROGRAM_START = 0;
 auto startTime = std::chrono::steady_clock::now(); //steady clock is great for timers, not great for epoch
 
+/**
+ * @brief Slope-intercept linear scaling function, option to clip output to minOut~maxOut range.  y = mx + b.
+ *        Note that `minOut` does NOT have to be the smaller number if a inverse slope is required. Execution
+ *        time: approx 8us when `clipOutput` = `TRUE`.
+ *
+ * @param[in] input input val
+ * @param[in] minIn minimum input val
+ * @param[in] maxIn maximum input val
+ * @param[in] minOut minimum output val
+ * @param[in] maxOut maximum output val
+ * @param[in] clipOutput `TRUE`: if output is found to be outside the range of minOut~maxOut, clip to the max. or min.
+ *                    `FALSE`: Scale with no adjustments if output is outside range.
+ * @return If no errors, returns resistance in ohms. If error, returns `-1` (very large unsigned number)
+ */
+double scale(double input, double minIn, double maxIn, double minOut, double maxOut, bool clipOutput)
+{
+    double slope = ((maxOut - minOut) / (maxIn - minIn));
+    double intercept = (minOut - (minIn * slope));
+    double output = ((slope * input) + intercept);
+    if (clipOutput) //  DON'T ALLOW OUTPUT OUTSIDE RANGE
+    {
+        double minVal = (minOut < maxOut) ? minOut : maxOut; //	FIND MIN/MAX VALUES - INCASE WE ARE INVERSELY SCALING
+        double maxVal = (minOut > maxOut) ? minOut : maxOut;
+        if (output > maxVal)
+            output = maxVal;
+        if (output < minVal)
+            output = minVal;
+    }
+    return output;
+}
+
 //  COUNTS HOW MANY BITS ARE EQUAL TO 1 IN A VARIABLE WITH LENGTH UP TO 32 BITS
 //  SHAMELESSLY STOLEN FROM THE INTERNET
 int NumberOfSetBits(uint32_t i)
