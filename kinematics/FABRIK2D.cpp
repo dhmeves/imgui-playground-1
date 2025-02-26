@@ -123,7 +123,11 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
             float jx = current_joint.x;
             float jy = current_joint.y;
             float r_i = _distance(jx, jy, x, y);
-            float lambda_i = static_cast<float>(lengths[i]) / r_i;
+            float lambda_i = 0;
+            if (r_i != 0.0f) // don't divide by zero yo
+            {
+                float lambda_i = static_cast<float>(lengths[i]) / r_i;
+            }
 
             // Find the new joint positions
             Joint& next_joint = this->_chain->joints[i + 1];

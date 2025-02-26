@@ -117,7 +117,41 @@ typedef struct
     spn_info spns[MAX_NUM_SPNS];
 } can_isobus_info;
 
+// Motion profile structure
+typedef struct {
+    float max_velocity;
+    float max_acceleration;
+    float max_jerk;
+    float current_value;
+    float target_value;
+    float velocity;
+    float acceleration;
+    uint32_t last_update;
+} MotionProfile;
 
+void update_motion(MotionProfile* profile) {
+    uint32_t now = millis();
+    float dt = (now - profile->last_update) / 1000.0f; // Convert ms to seconds
+    profile->last_update = now;
+
+    float error = profile->target_value - profile->current_value;
+    if (fabs(error) < 0.001 && fabs(profile->velocity) < 0.001) return; // Close enough
+
+    // Adjust acceleration dynamically based on remaining distance
+    float decel_distance = (profile->velocity * profile->velocity) / (2 * profile->max_acceleration);
+    if (fabs(error) < decel_distance) {
+        profile->acceleration = -profile->max_acceleration * (profile->velocity > 0 ? 1 : -1);
+    }
+    else {
+        profile->acceleration = profile->max_acceleration * (error > 0 ? 1 : -1);
+    }
+
+    profile->velocity += profile->acceleration * dt;
+    if (fabs(profile->velocity) > profile->max_velocity)
+        profile->velocity = profile->max_velocity * (profile->velocity > 0 ? 1 : -1);
+
+    profile->current_value += profile->velocity * dt;
+}
 /**
  * @brief Extracts a value of type uint16 at a given location and length from an array of uint8's, returns success
  *
@@ -1215,7 +1249,7 @@ double RampScale(double currentVal, double setpoint, double min, double max, uin
     {
         rampTime = 1;
     }
-    double maxIncrement = (int)(((maxVal - minVal) / rampTime) * (double)timeSince); // FLOATS MAKE NEGATIVE NUMBERS SAD!
+    double maxIncrement = (((maxVal - minVal) / rampTime) * (double)timeSince); // FLOATS MAKE NEGATIVE NUMBERS SAD!
     //printf("maxIncrement: %f\n", maxIncrement);
     double increment = setpoint - currentVal;
     double absIncrement = increment;
@@ -2804,11 +2838,60 @@ int main(int, char**)
                     ImGui::SliderFloat("point3", &armPoints[1].y, 0, 100);
                     ImGui::SliderFloat("X-Inverse Kinematics", &inverseKinematics.x, 0, 200);
                     ImGui::SliderFloat("Y-Inverse Kinematics", &inverseKinematics.y, 0, 200);
+
+                    ImGui::Button("Tool Joystick");
+                    if (ImGui::IsItemActive())
+                        ImGui::GetForegroundDrawList()->AddLine(io.MouseClickedPos[0], io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f); // Draw a line between the button and the mouse cursor
+                    ImVec2 value_raw = ImGui::GetMouseDragDelta(0, 0.0f);
+
                     ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
                     ImGui::Text("angle0 %f", fabrik2D.getAngle(0)* RAD_TO_DEG);
                     ImGui::Text("angle1 %f", fabrik2D.getAngle(1)* RAD_TO_DEG);
                     ImGui::Text("angle2 %f", fabrik2D.getAngle(2)* RAD_TO_DEG);
-                    const ImVec2 startPos = ImGui::GetCursorScreenPos();
+                    ImVec2 startPos = ImGui::GetCursorScreenPos();
+                    ImVec2 windowSize;
+                    windowSize.x = ImGui::GetWindowWidth();
+                    windowSize.y = ImGui::GetWindowHeight();
+                    startPos.x = startPos.x + windowSize.x / 2;
+                    startPos.y = startPos.y + 200;// windowSize.y / 2;
+
+                    //static double prevToolSetpointX = 0;
+                    //static uint64_t prevToolTimeX = 0;
+                    //static bool finishedMovementX = false;
+                    //double toolSetpointX = RampScale(prevToolSetpointX, value_raw.x, 10, 200, &prevToolTimeX, 2000, &finishedMovementX);
+                    //prevToolSetpointX = toolSetpointX;
+
+                    //static double prevToolSetpointY = 0;
+                    //static uint64_t prevToolTimeY = 0;
+                    //static bool finishedMovementY = false;
+                    //double toolSetpointY = RampScale(prevToolSetpointY, value_raw.y, 10, 200, &prevToolTimeY, 2000, &finishedMovementY);
+                    //prevToolSetpointY = toolSetpointY;
+
+                    static MotionProfile toolSetpointX;
+                    static bool firstLoopX = true;
+                    if (firstLoopX)
+                    {
+                        firstLoopX = false;
+                        toolSetpointX.max_velocity = 200;
+                        toolSetpointX.max_acceleration = 150;
+                        toolSetpointX.last_update = 0;
+                    }
+                    toolSetpointX.target_value = value_raw.x;
+                    update_motion(&toolSetpointX);
+                    //toolSetpointX.last_update = toolSetpointX.current_value;
+
+                    static MotionProfile toolSetpointY;
+                    static bool firstLoopY = true;
+                    if (firstLoopY)
+                    {
+                        firstLoopY = false;
+                        toolSetpointY.max_velocity = 200;
+                        toolSetpointY.max_acceleration = 150;
+                        toolSetpointY.last_update = 0;
+                    }
+                    toolSetpointY.target_value = value_raw.y;
+                    update_motion(&toolSetpointY);
+                    //toolSetpointY.last_update = toolSetpointY.current_value;
 
                     static float ang = 0;
                     static int counter = 0;
@@ -2824,7 +2907,8 @@ int main(int, char**)
                     float x = x_offset + radius * cos(ang * 1000 / 57296);
                     float y = y_offset + radius * sin(ang * 1000 / 57296);
                     draw_list->AddLine(ImVec2(startPos.x + armPoints[0].x, startPos.y + armPoints[0].y), ImVec2(startPos.x + armPoints[1].x, startPos.y + armPoints[1].y), col, th);
-                    fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
+                    fabrik2D.solve(toolSetpointX.current_value, toolSetpointY.current_value, toolAngle / RAD_TO_DEG, lengths);
+                    //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y + fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), col, th);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col, th);
