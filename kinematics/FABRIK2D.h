@@ -106,6 +106,8 @@ class Fabrik2D {
      */
     uint8_t solve(float x, float y, int lengths[]);
 
+    // applys angular constraints to our chain
+    void SetAngularConstraints(AngularConstraint angular_constraints[]);
     /* solve(x, y, angle, lengths)
      *
      * Inputs: x and y positions of target, desired tool angle and lengths

@@ -12,7 +12,7 @@
 #define RAD_TO_DEG 57.295779513
 #define MS_PER_S 1000
 
-#define FRAME_RATE 500
+#define FRAME_RATE 60
 #define FRAME_TIME (1.0f / FRAME_RATE) * MS_PER_S
 
 static const uint16_t CRCTABLE[256] = {

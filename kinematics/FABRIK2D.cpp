@@ -26,10 +26,11 @@
 
 #include "FABRIK2D.h"
 
-//#include "Arduino.h"
+ //#include "Arduino.h"
 
-// Defined epsilon value which is considered as 0
+ // Defined epsilon value which is considered as 0
 #define EPSILON_VALUE 0.001
+
 
 Fabrik2D::Fabrik2D(int numJoints, int lengths[], float tolerance) {
     this->_numJoints = numJoints;
@@ -39,7 +40,7 @@ Fabrik2D::Fabrik2D(int numJoints, int lengths[], float tolerance) {
 }
 
 Fabrik2D::Fabrik2D(int numJoints, int lengths[], AngularConstraint angular_constraints[],
-                   float tolerance) {
+    float tolerance) {
     this->_numJoints = numJoints;
     _createChain(lengths, angular_constraints);
 
@@ -48,6 +49,15 @@ Fabrik2D::Fabrik2D(int numJoints, int lengths[], AngularConstraint angular_const
 
 Fabrik2D::~Fabrik2D() {
     _deleteChain();
+}
+
+void Fabrik2D::SetAngularConstraints(AngularConstraint angular_constraints[])
+{
+    for (int i = 0; i < this->_numJoints - 1; i++)
+    {
+        this->_chain->joints[i].constraint.min_angle = angular_constraints[i].min_angle;
+        this->_chain->joints[i].constraint.max_angle = angular_constraints[i].max_angle;
+    }
 }
 
 void Fabrik2D::_createChain(int* lengths) {
@@ -137,7 +147,8 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
 
         _resetChain(lengths);
         return 0;
-    } else {
+    }
+    else {
         // The target is reachable; this, set as (bx,by) the initial
         // position of the joint i
         float bx = this->_chain->joints[0].x;
@@ -153,6 +164,10 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
         float tolerance = this->_tolerance;
         while (dist > tolerance) {
             _num_iterations++;
+            if (_num_iterations > 100)
+            {
+                return 2;
+            }
             // If previous error is the same as current error,
             // Tolerances might be too low. Increase tolerances and try again
             if (abs(prevDist - dist) < EPSILON_VALUE) {
@@ -182,7 +197,11 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
                 float nx = this->_chain->joints[i + 1].x;
                 float ny = this->_chain->joints[i + 1].y;
                 float r_i = _distance(jx, jy, nx, ny);
-                float lambda_i = static_cast<float>(lengths[i]) / r_i;
+                float lambda_i = 0.0f;
+                if (r_i != 0.0f) // don't divide by zero my friend
+                {
+                    lambda_i = static_cast<float>(lengths[i]) / r_i;
+                }
 
                 // Find the new joint positions
                 this->_chain->joints[i].x = static_cast<float>((1 - lambda_i) * nx + lambda_i * jx);
@@ -202,7 +221,11 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
                 float nx = this->_chain->joints[i].x;
                 float ny = this->_chain->joints[i].y;
                 float r_i = _distance(jx, jy, nx, ny);
-                float lambda_i = static_cast<float>(lengths[i]) / r_i;
+                float lambda_i = 0.0f;
+                if (r_i != 0.0f) // don't divide by zero my friend
+                {
+                    lambda_i = static_cast<float>(lengths[i]) / r_i;
+                }
 
                 // Find the new joint positions
                 this->_chain->joints[i + 1].x =
@@ -213,10 +236,11 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
                 if (i > 0) {
                     Joint const& parent_joint = this->_chain->joints[i - 1];
                     _applyAngularConstraints(this->_chain->joints[i - 1], this->_chain->joints[i],
-                                             this->_chain->joints[i + 1]);
-                } else {
+                        this->_chain->joints[i + 1]);
+                }
+                else {
                     _applyAngularConstraints(this->_chain->joints[i], this->_chain->joints[i],
-                                             this->_chain->joints[i + 1]);
+                        this->_chain->joints[i + 1]);
                 }
             }
 
@@ -236,8 +260,9 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
         float ay = this->_chain->joints[i - 1].y;
         float bx = this->_chain->joints[i].x;
         float by = this->_chain->joints[i].y;
+        float aAngle = 0.0f;
 
-        float aAngle = atan2(by - ay, bx - ax);
+        aAngle = atan2(by - ay, bx - ax);
 
         this->_chain->joints[i - 1].angle = aAngle - prevAngle;
 
@@ -248,7 +273,7 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
 }
 
 uint8_t Fabrik2D::solve2(float x, float y, float z, float toolAngle, float grippingOffset,
-                         int lengths[]) {
+    int lengths[]) {
     uint8_t result_status = 0;
 
     if (this->_numJoints >= 4) {
@@ -440,7 +465,7 @@ float Fabrik2D::_angleBetween(float x1, float y1, float x2, float y2) {
 }
 
 void Fabrik2D::_applyAngularConstraints(Joint const& parent_joint, Joint const& joint,
-                                        Joint& next_joint) {
+    Joint& next_joint) {
     float px = joint.x - parent_joint.x;
     float py = joint.y - parent_joint.y;
     float nx = next_joint.x - joint.x;
