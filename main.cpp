@@ -3141,6 +3141,31 @@ int main(int, char**)
                 static int counter = 0;
 
                 ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+                const uint8_t NAME_NUM_CHARS = 8;
+                uint8_t originalName[NAME_NUM_CHARS];
+                originalName[0] = 'S';
+                originalName[1] = 'e';
+                originalName[2] = 't';
+                originalName[3] = 'u';
+                originalName[4] = 'p';
+                originalName[5] = ' ';
+                originalName[6] = 'A';
+                originalName[7] = 0;
+
+                uint8_t newName[NAME_NUM_CHARS];
+                newName[0] = 'S';
+                newName[1] = 'e';
+                newName[2] = 't';
+                newName[3] = 'u';
+                newName[4] = 'p';
+                newName[5] = ' ';
+                newName[6] = 'B';
+                newName[7] = 0;
+
+                ImGui::Text("memcmp result: %d", memcmp(originalName, newName, NAME_NUM_CHARS));
+                ImGui::Text("before memcpy: %s", originalName);
+                memcpy(originalName, newName, NAME_NUM_CHARS);
+                ImGui::Text("memcpy result: %s", originalName);
 
                 ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
                 ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
