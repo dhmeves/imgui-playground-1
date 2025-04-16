@@ -34,6 +34,103 @@ double scale(double input, double minIn, double maxIn, double minOut, double max
     return output;
 }
 
+// curve MUST be a function (only 1 output for a given input)
+double scaleToCurve(CURVE_T curve, double input, bool clipOutput)
+{
+    int indexFound = -1;
+    int curveTDirection = 0; // 0 means neither increasing or decreasing
+
+    // check direction of curve.t (increasing or decreasing)// first check if we are increasing or decreasing between indices
+    if (curve.t[1] > curve.t[0]) // curve.t increases as index increases
+    {
+        curveTDirection = 1;
+    }
+    else if (curve.t[1] < curve.t[0]) // curve.t decreases as index increases
+    {
+        curveTDirection = -1;
+    }
+
+    // check bounds before anything else
+    if (curveTDirection > 0)
+    {
+        if (input < curve.t[0])
+        {
+            indexFound = 1;
+        }
+        else if (input > curve.t[curve.length - 1])
+        {
+            indexFound = curve.length - 1;
+        }
+    }
+    else if (curveTDirection < 0)
+    {
+        if (input > curve.t[0])
+        {
+            indexFound = 1;
+        }
+        else if (input < curve.t[curve.length - 1])
+        {
+            indexFound = curve.length - 1;
+        }
+    }
+
+    // check inside curve so we can linearly interpolate (only if we are within curve.t bounds!)
+    if (indexFound == -1)
+    {
+        int i;
+        for (i = 1; i < curve.length; i++)
+        {
+            // first check if we are increasing or decreasing between indices
+            if (curveTDirection > 0) // curve.t increases as index increases
+            {
+                if (input <= curve.t[i] && input >= curve.t[i - 1])
+                {
+                    indexFound = i;
+                    break;
+                }
+            }
+            else if (curveTDirection < 0) // curve.t decreases as index increases
+            {
+                if (input >= curve.t[i] && input <= curve.t[i - 1])
+                {
+                    indexFound = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (indexFound != -1) // make sure we found something
+    {
+        double output = curve.y[0];
+        double maxIn = curve.t[indexFound];
+        double minIn = curve.t[indexFound - 1];
+        double maxOut = curve.y[indexFound];
+        double minOut = curve.y[indexFound - 1];
+        output = scale(input, minIn, maxIn, minOut, maxOut, clipOutput); // yes, input/output ranges are supposed to be the same
+        return output;
+    }
+    return 0; // return 0 if we never found an index
+}
+//{
+//    int i = 0;
+//    int indexFound = 0;
+//    for (i = 1; i < curve->length; i++)
+//    {
+//        if ((curve->t[i] < input) && (curve->t[i - 1] > input))
+//        {
+//            indexFound = i;
+//            break;
+//        }
+//    }
+//
+//    double output = curve->y[0];
+//    double maxOut = curve->y[indexFound];
+//    double minOut = curve->y[indexFound - 1];
+//    output = scale(input, minIn, maxIn, minOut, maxOut, true);
+//    return output;
+//}
+
 //  COUNTS HOW MANY BITS ARE EQUAL TO 1 IN A VARIABLE WITH LENGTH UP TO 32 BITS
 //  SHAMELESSLY STOLEN FROM THE INTERNET
 int NumberOfSetBits(uint32_t i)

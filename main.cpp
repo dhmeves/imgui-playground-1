@@ -1,4 +1,4 @@
-// Dear ImGui: standalone example application for DirectX 11
+﻿// Dear ImGui: standalone example application for DirectX 11
 
 // Learn about Dear ImGui:
 // - FAQ                  https://dearimgui.com/faq
@@ -3190,6 +3190,149 @@ int main(int, char**)
                 ImGui::Text("Hello from another window!");
                 if (ImGui::Button("Close Me"))
                     show_another_window = false;
+                ImGui::End();
+            }
+
+
+            static bool show_scale_to_curve_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_scale_to_curve_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_Appearing);
+                ImGui::Begin("Scale to curve", &show_scale_to_curve_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    static int resistance = 0;
+                    static float waveform = 0;
+                    ImGui::SliderInt("voltage", &resistance, -1, 6000);
+                    ImGui::SliderFloat("waveformVal", &waveform, -1.0, 3.0);
+                    const int CURVE_LEN = 20;
+                    //static double y_vals[CURVE_LEN] = {
+                    //    -40, -30, -20, -10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150 };
+
+                    //static double t_vals[CURVE_LEN] = {
+                    //    5428, 5381, 5305, 5190, 5023, 4790, 4486, 4112, 3682, 3220, 2753, 2307, 1905, 1554, 1259, 1016, 820, 662, 536, 436};
+
+                    static CURVE_T ERT120_CURVE = {
+                        {5428, 5381, 5305, 5190, 5023, 4790, 4486, 4112, 3682, 3220, 2753, 2307, 1905, 1554, 1259, 1016, 820, 662, 536, 436},
+                        {-40,  -30,  -20,  -10,  0,    10,   20,   30,   40,   50,   60,   70,   80,   90,   100,  110,  120, 130, 140, 150},
+                        CURVE_LEN
+                    };
+
+                    const int NUM_TEST_PNTS = 50;
+                    // Sine wave: 2 full periods over 2 seconds
+                    const CURVE_T sine_wave = {
+                        {
+                            0.000, 0.041, 0.082, 0.122, 0.163, 0.204, 0.245, 0.286, 0.327, 0.367,
+                            0.408, 0.449, 0.490, 0.531, 0.571, 0.612, 0.653, 0.694, 0.735, 0.776,
+                            0.816, 0.857, 0.898, 0.939, 0.980, 1.020, 1.061, 1.102, 1.143, 1.184,
+                            1.224, 1.265, 1.306, 1.347, 1.388, 1.429, 1.469, 1.510, 1.551, 1.592,
+                            1.633, 1.673, 1.714, 1.755, 1.796, 1.837, 1.878, 1.918, 1.959, 2.000
+                        },
+                        {
+                            0.000, 0.254, 0.491, 0.696, 0.855, 0.959, 0.999, 0.975, 0.887, 0.740,
+                            0.546, 0.315, 0.064, -0.191, -0.434, -0.648, -0.820, -0.938, -0.995, -0.987,
+                            -0.914, -0.782, -0.598, -0.375, -0.128, 0.128, 0.375, 0.598, 0.782, 0.914,
+                            0.987, 0.995, 0.938, 0.820, 0.648, 0.434, 0.191, -0.064, -0.315, -0.546,
+                            -0.740, -0.887, -0.975, -0.999, -0.959, -0.855, -0.696, -0.491, -0.254, -0.000
+                        },
+                        NUM_TEST_PNTS
+                    };
+
+                    // Square wave: 2 periods, 1s high, 1s low
+                    const CURVE_T square_wave = {
+                        {
+                            0.000, 0.041, 0.082, 0.122, 0.163, 0.204, 0.245, 0.286, 0.327, 0.367,
+                            0.408, 0.449, 0.490, 0.531, 0.571, 0.612, 0.653, 0.694, 0.735, 0.776,
+                            0.816, 0.857, 0.898, 0.939, 0.980, 1.020, 1.061, 1.102, 1.143, 1.184,
+                            1.224, 1.265, 1.306, 1.347, 1.388, 1.429, 1.469, 1.510, 1.551, 1.592,
+                            1.633, 1.673, 1.714, 1.755, 1.796, 1.837, 1.878, 1.918, 1.959, 2.000
+                        },
+                        {
+                            1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000,
+                            1.000, 1.000, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+                            0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 1.000, 1.000, 1.000, 1.000,
+                            1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 0.000, 0.000, 0.000,
+                            0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
+                        },
+                        NUM_TEST_PNTS
+                    };
+
+                    // Triangle wave: 0 → 1 → 0 repeated for 2 cycles
+                    const CURVE_T triangle_wave = {
+                        {
+                            0.000, 0.041, 0.082, 0.122, 0.163, 0.204, 0.245, 0.286, 0.327, 0.367,
+                            0.408, 0.449, 0.490, 0.531, 0.571, 0.612, 0.653, 0.694, 0.735, 0.776,
+                            0.816, 0.857, 0.898, 0.939, 0.980, 1.020, 1.061, 1.102, 1.143, 1.184,
+                            1.224, 1.265, 1.306, 1.347, 1.388, 1.429, 1.469, 1.510, 1.551, 1.592,
+                            1.633, 1.673, 1.714, 1.755, 1.796, 1.837, 1.878, 1.918, 1.959, 2.000
+                        },
+                        {
+                            0.000, 0.163, 0.327, 0.490, 0.653, 0.816, 0.980, 1.143, 1.306, 1.469,
+                            1.633, 1.796, 1.959, 1.878, 1.714, 1.551, 1.388, 1.224, 1.061, 0.898,
+                            0.735, 0.571, 0.408, 0.245, 0.082, 0.082, 0.245, 0.408, 0.571, 0.735,
+                            0.898, 1.061, 1.224, 1.388, 1.551, 1.714, 1.878, 1.959, 1.796, 1.633,
+                            1.469, 1.306, 1.143, 0.980, 0.816, 0.653, 0.490, 0.327, 0.163, 0.000
+                        },
+                        NUM_TEST_PNTS
+                    };
+
+                    // Sawtooth wave: Repeats 0 → 1 twice over 2 seconds
+                    const CURVE_T sawtooth_wave = {
+                        {
+                            0.000, 0.041, 0.082, 0.122, 0.163, 0.204, 0.245, 0.286, 0.327, 0.367,
+                            0.408, 0.449, 0.490, 0.531, 0.571, 0.612, 0.653, 0.694, 0.735, 0.776,
+                            0.816, 0.857, 0.898, 0.939, 0.980, 1.020, 1.061, 1.102, 1.143, 1.184,
+                            1.224, 1.265, 1.306, 1.347, 1.388, 1.429, 1.469, 1.510, 1.551, 1.592,
+                            1.633, 1.673, 1.714, 1.755, 1.796, 1.837, 1.878, 1.918, 1.959, 2.000
+                        },
+                        {
+                            0.000, 0.041, 0.082, 0.122, 0.163, 0.204, 0.245, 0.286, 0.327, 0.367,
+                            0.408, 0.449, 0.490, 0.531, 0.571, 0.612, 0.653, 0.694, 0.735, 0.776,
+                            0.816, 0.857, 0.898, 0.939, 0.980, 0.020, 0.061, 0.102, 0.143, 0.184,
+                            0.224, 0.265, 0.306, 0.347, 0.388, 0.429, 0.469, 0.510, 0.551, 0.592,
+                            0.633, 0.673, 0.714, 0.755, 0.796, 0.837, 0.878, 0.918, 0.959, 0.000
+                        },
+                        NUM_TEST_PNTS
+                    };
+
+                    double temperature = scaleToCurve(ERT120_CURVE, resistance, false);
+                    ImGui::Text("Resistance: %d", resistance);
+                    ImGui::Text("Temperature: %f", temperature);
+
+                    double output = scaleToCurve(triangle_wave, waveform, false);
+                    ImGui::Text("waveform: %f", waveform);
+                    ImGui::Text("output: %f", output);
+
+                    double scaleTest = scale(resistance, 0, 1000, 0, 1000, false);
+                    ImGui::Text("scaleTest: %f", scaleTest);
+
+                    //char a = 'a';
+                    //char bigA = 'A';
+                    //char one = '1';
+                    //ImGui::Text("a: %c", a);
+                    //ImGui::Text("a toupper(): %c", toupper(a));
+                    //ImGui::Text("A: %c", toupper(bigA));
+                    //ImGui::Text("A toupper(): %c", toupper(bigA));
+                    //ImGui::Text("one: %c", toupper(one));
+                    //ImGui::Text("one toupper(): %c", toupper(one));
+
+                    //const int NUM_HASH_CHARS = 7;
+                    //char hash_chars[] = { 'a', '1', 'f', '3', '4', '8', '7' };
+                    //ImGui::Text("BEFORE");
+                    //for (int i = 0; i < NUM_HASH_CHARS; i++)
+                    //{
+                    //    ImGui::Text("%c ", hash_chars[i]); ImGui::SameLine();
+                    //    hash_chars[i] = toupper(hash_chars[i]);
+                    //}
+                    //ImGui::Text("");
+                    //ImGui::Text("AFTER");
+
+                    //for (int i = 0; i < NUM_HASH_CHARS; i++)
+                    //{
+                    //    ImGui::Text("%c ", hash_chars[i]); ImGui::SameLine();
+                    //}
+                    
+                }
                 ImGui::End();
             }
 

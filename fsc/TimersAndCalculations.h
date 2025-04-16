@@ -50,7 +50,16 @@ static const uint16_t CRCTABLE[256] = {
   0x8201, 0x42c0, 0x4380, 0x8341, 0x4100, 0x81c1, 0x8081, 0x4040
 };
 
+#define NUM_PNTS_CURVE 100
+typedef struct curve
+{
+    double t[NUM_PNTS_CURVE];
+    double y[NUM_PNTS_CURVE];
+    int length;
+} CURVE_T;
+
 double scale(double input, double minIn, double maxIn, double minOut, double maxOut, bool clipOutput);
+double scaleToCurve(CURVE_T curve, double input, bool clipOutput);
 int NumberOfSetBits(uint32_t i);
 int ThreeWayXOR(int a, int b, int c);
 float fsc_fabs(float f);
