@@ -3203,15 +3203,9 @@ int main(int, char**)
                 {
                     static int resistance = 0;
                     static float waveform = 0;
-                    ImGui::SliderInt("voltage", &resistance, -1, 6000);
+                    ImGui::SliderInt("resistance", &resistance, -1, 6000, "%d ohm");
                     ImGui::SliderFloat("waveformVal", &waveform, -1.0, 3.0);
                     const int CURVE_LEN = 20;
-                    //static double y_vals[CURVE_LEN] = {
-                    //    -40, -30, -20, -10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150 };
-
-                    //static double t_vals[CURVE_LEN] = {
-                    //    5428, 5381, 5305, 5190, 5023, 4790, 4486, 4112, 3682, 3220, 2753, 2307, 1905, 1554, 1259, 1016, 820, 662, 536, 436};
-
                     static CURVE_T ERT120_CURVE = {
                         {5428, 5381, 5305, 5190, 5023, 4790, 4486, 4112, 3682, 3220, 2753, 2307, 1905, 1554, 1259, 1016, 820, 662, 536, 436},
                         {-40,  -30,  -20,  -10,  0,    10,   20,   30,   40,   50,   60,   70,   80,   90,   100,  110,  120, 130, 140, 150},
@@ -3295,7 +3289,7 @@ int main(int, char**)
                         NUM_TEST_PNTS
                     };
 
-                    double temperature = scaleToCurve(ERT120_CURVE, resistance, false);
+                    double temperature = scaleToCurve(ERT120_CURVE, resistance, true);
                     ImGui::Text("Resistance: %d", resistance);
                     ImGui::Text("Temperature: %f", temperature);
 
@@ -3331,9 +3325,35 @@ int main(int, char**)
                     //{
                     //    ImGui::Text("%c ", hash_chars[i]); ImGui::SameLine();
                     //}
-                    
+
                 }
                 ImGui::End();
+            }
+            {
+                static bool show_scale_window = true;
+                // 3. Show a CAN endianess playground window
+                if (show_scale_window)
+                {
+                    ImGui::SetNextWindowSize(ImVec2(500, 400), ImGuiCond_Appearing);
+                    ImGui::Begin("Scale", &show_scale_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                    {
+                        static float input = 0;
+                        static float minIn = 0;
+                        static float maxIn = 0;
+                        static float minOut = 0;
+                        static float maxOut = 0;
+                        static bool clipOutput = 0;
+                        ImGui::SliderFloat("input", &input, -100, 100, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("minIn", &minIn, -100, 100, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("maxIn", &maxIn, -100, 100, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("minOut", &minOut, -100, 100, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("maxOut", &maxOut, -100, 100, "%3f", ImGuiSliderFlags_None);
+                        ImGui::Checkbox("clipOutput", &clipOutput);
+                        double output = scale(input, minIn, maxIn, minOut, maxOut, clipOutput);
+                        ImGui::Text("output: %f", output);
+                    }
+                    ImGui::End();
+                }
             }
 
             // Rendering
