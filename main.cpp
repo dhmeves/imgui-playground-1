@@ -3180,6 +3180,41 @@ int main(int, char**)
                 ImGui::Text("counter = %d", counter);
 
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+                static uint64 prevButtonPress = millis();
+                static bool myBool = false;
+                if (ImGui::Button("Click for 2s + 2s delay"))
+                {
+                    prevButtonPress = millis() + 1000;
+                }
+                static int onTime = 1000;
+                static int offTime = 500;
+                ImGui::SliderInt("ON TIME", &onTime, 1, 2000);
+                ImGui::SliderInt("OFF TIME", &offTime, 1, 2000);
+                static uint64_t prevPeriodTime = millis();
+                static uint64_t prevOnTime = millis();
+                if (Timer(prevPeriodTime, onTime + offTime, true))
+                {
+                    myBool = true;
+                    prevOnTime = millis();
+                }
+                if (Timer(prevOnTime, onTime, false))
+                {
+                    myBool = false;
+                }
+                //if (Timer(prevPeriodTime, onTime + offTime, false))
+                //{
+                //    if (Timer(prevOnTime, onTime, false))
+                //    {
+                //        myBool = false;
+                //        prevPeriodTime = millis();
+                //    }
+                //}
+                //else
+                //{
+                //    prevOnTime = millis();
+                //    myBool = true;
+                //}
+                ImGui::Text("myBool: %d", myBool);
                 ImGui::End();
             }
 

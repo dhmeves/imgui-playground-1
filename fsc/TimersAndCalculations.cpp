@@ -298,7 +298,7 @@ bool Timer(uint64_t& prevTime, uint64_t timeout, bool resetPrevTime, uint64_t cu
     {
         current_time = millis();
     }
-    if ((uint64_t)(current_time - prevTime) >= timeout) //typecast to create a massive positive number when current_time rolls over to 0
+    if ((current_time - prevTime) >= timeout) //typecast to create a massive positive number when current_time rolls over to 0
     {
         if (resetPrevTime)
         {
