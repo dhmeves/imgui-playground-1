@@ -3201,20 +3201,48 @@ int main(int, char**)
                 {
                     myBool = false;
                 }
-                //if (Timer(prevPeriodTime, onTime + offTime, false))
-                //{
-                //    if (Timer(prevOnTime, onTime, false))
-                //    {
-                //        myBool = false;
-                //        prevPeriodTime = millis();
-                //    }
-                //}
-                //else
-                //{
-                //    prevOnTime = millis();
-                //    myBool = true;
-                //}
                 ImGui::Text("myBool: %d", myBool);
+
+                static uint64_t prevIncrementTime = 0;
+                static uint64_t partialIncrementTime = 0;
+                static uint64_t partialNonIncrementTime = 0;
+                static int incTimeout = 5000;
+                static int64_t adjustedTimeout = incTimeout;
+                static bool machineRunning = false;
+                ImGui::Checkbox("Machine Running", &machineRunning);
+                ImGui::SliderInt("Increment Time", &incTimeout, 0, 10000);
+
+                static int valueToBeIncremented = 0;
+                static bool prevMachineRunning = false;
+                if (machineRunning)
+                {
+                    static uint64_t prevMiniIncrementTimer = 0;
+                    static uint64_t miniIncrementTimeout = 200;
+                    if (Timer(prevMiniIncrementTimer, miniIncrementTimeout, true))
+                    {
+                        partialIncrementTime += miniIncrementTimeout;
+                    }
+                    uint64_t adjustedTimeout = incTimeout + partialNonIncrementTime;
+                    if (Timer(prevIncrementTime, adjustedTimeout, true))
+                    {
+                        valueToBeIncremented++;
+                        partialNonIncrementTime = 0;
+                        partialIncrementTime = 0;
+                    }
+                }
+                else
+                {
+                    static uint64_t start = 0;
+                    if (machineRunning != prevMachineRunning) // one shot when running changes
+                    {
+                        start = millis();
+                    }
+                    partialNonIncrementTime = millis() - start; // TODO - RM: THIS ONLY TAKES INTO ACCOUNT ONE TOGGLE BETWEEN machineRunning = true AND machineRunning = false!!
+                }
+                prevMachineRunning = machineRunning;
+                ImGui::Text("incremented value: %d", valueToBeIncremented);
+                ImGui::Text("prevIncrementTime: %d", prevIncrementTime);
+                ImGui::Text("partialIncrementTime: %d", partialIncrementTime);
                 ImGui::End();
             }
 
