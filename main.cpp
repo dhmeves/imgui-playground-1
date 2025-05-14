@@ -3216,16 +3216,14 @@ int main(int, char**)
                 static bool prevMachineRunning = false;
                 if (machineRunning)
                 {
-                    static uint64_t prevMiniIncrementTimer = 0;
-                    static uint64_t miniIncrementTimeout = 200;
-                    if (Timer(prevMiniIncrementTimer, miniIncrementTimeout, true))
+                    if (machineRunning != prevMachineRunning) // one shot when running changes
                     {
-                        partialIncrementTime += miniIncrementTimeout;
+                        partialIncrementTime += partialNonIncrementTime; // sum all partials times together so we always count properly
                     }
-                    uint64_t adjustedTimeout = incTimeout + partialNonIncrementTime;
+                    uint64_t adjustedTimeout = incTimeout + partialIncrementTime;// partialNonIncrementTime;
                     if (Timer(prevIncrementTime, adjustedTimeout, true))
                     {
-                        valueToBeIncremented++;
+                        valueToBeIncremented += (incTimeout / MS_PER_S);
                         partialNonIncrementTime = 0;
                         partialIncrementTime = 0;
                     }
@@ -3240,9 +3238,11 @@ int main(int, char**)
                     partialNonIncrementTime = millis() - start; // TODO - RM: THIS ONLY TAKES INTO ACCOUNT ONE TOGGLE BETWEEN machineRunning = true AND machineRunning = false!!
                 }
                 prevMachineRunning = machineRunning;
+                uint32_t actualOperatingHours = valueToBeIncremented + ((millis() - prevIncrementTime - partialNonIncrementTime) / MS_PER_S);
                 ImGui::Text("incremented value: %d", valueToBeIncremented);
                 ImGui::Text("prevIncrementTime: %d", prevIncrementTime);
                 ImGui::Text("partialIncrementTime: %d", partialIncrementTime);
+                ImGui::Text("actualOperatingHours: %d", actualOperatingHours);
                 ImGui::End();
             }
 
