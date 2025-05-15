@@ -3206,24 +3206,26 @@ int main(int, char**)
                 static uint64_t prevIncrementTime = 0;
                 static uint64_t partialIncrementTime = 0;
                 static uint64_t partialNonIncrementTime = 0;
-                static int incTimeout = 5000;
+                static int incTimeout = 1;
                 static int64_t adjustedTimeout = incTimeout;
                 static bool machineRunning = false;
+                static bool firstLoop = true;
                 ImGui::Checkbox("Machine Running", &machineRunning);
-                ImGui::SliderInt("Increment Time", &incTimeout, 0, 10000);
+                ImGui::SliderInt("Increment Time", &incTimeout, 0, 10);
 
                 static int valueToBeIncremented = 0;
                 static bool prevMachineRunning = false;
                 if (machineRunning)
                 {
-                    if (machineRunning != prevMachineRunning) // one shot when running changes
+                    if (firstLoop || machineRunning != prevMachineRunning) // one shot when running changes
                     {
+                        firstLoop = false;
                         partialIncrementTime += partialNonIncrementTime; // sum all partials times together so we always count properly
                     }
-                    uint64_t adjustedTimeout = incTimeout + partialIncrementTime;// partialNonIncrementTime;
+                    uint64_t adjustedTimeout = incTimeout * MS_PER_S * S_PER_MIN + partialIncrementTime;// partialNonIncrementTime;
                     if (Timer(prevIncrementTime, adjustedTimeout, true))
                     {
-                        valueToBeIncremented += (incTimeout / MS_PER_S);
+                        valueToBeIncremented += (incTimeout * S_PER_MIN);
                         partialNonIncrementTime = 0;
                         partialIncrementTime = 0;
                     }
@@ -3231,8 +3233,9 @@ int main(int, char**)
                 else
                 {
                     static uint64_t start = 0;
-                    if (machineRunning != prevMachineRunning) // one shot when running changes
+                    if (firstLoop || machineRunning != prevMachineRunning) // one shot when running changes
                     {
+                        firstLoop = false;
                         start = millis();
                     }
                     partialNonIncrementTime = millis() - start; // TODO - RM: THIS ONLY TAKES INTO ACCOUNT ONE TOGGLE BETWEEN machineRunning = true AND machineRunning = false!!
