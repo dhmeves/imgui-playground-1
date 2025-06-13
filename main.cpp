@@ -48,9 +48,9 @@ Kalman kalman;
 Sudoku sudoku;
 
 const int NUM_JOINTS = 3;
-int lengths[NUM_JOINTS] = { 100, 100, 25 };
+int lengths[NUM_JOINTS] = { 39, 36, 18 };
 Fabrik2D::AngularConstraint angularConstraints[NUM_JOINTS];
-static Fabrik2D fabrik2D(4, lengths, 100);
+static Fabrik2D fabrik2D(4, lengths, 10);
 
 
 float camDistance = 8.f;
@@ -2826,12 +2826,12 @@ int main(int, char**)
                 ImGui::Begin("Kinematics", &show_kinematics_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     Fabrik2D::AngularConstraint angularConstraints[3];
-                    angularConstraints[0].min_angle = -PI;// -90 / RAD_TO_DEG;
-                    angularConstraints[0].max_angle = PI;//90 / RAD_TO_DEG;
-                    angularConstraints[1].min_angle = -PI;// -90 / RAD_TO_DEG;
-                    angularConstraints[1].max_angle = PI;// 90 / RAD_TO_DEG;
-                    angularConstraints[2].min_angle = -PI;// -90 / RAD_TO_DEG;
-                    angularConstraints[2].max_angle = PI;// 90 / RAD_TO_DEG;
+                    angularConstraints[0].min_angle = 2.0 * -PI;// 6 / RAD_TO_DEG;// -90 / RAD_TO_DEG;
+                    angularConstraints[0].max_angle = 2.0 * PI;//80 / RAD_TO_DEG;//90 / RAD_TO_DEG;
+                    angularConstraints[1].min_angle = 2.0 * -PI;// -90 / RAD_TO_DEG;
+                    angularConstraints[1].max_angle = 2.0 * PI;// 90 / RAD_TO_DEG;
+                    angularConstraints[2].min_angle = 2.0 * -PI;// -90 / RAD_TO_DEG;
+                    angularConstraints[2].max_angle = 2.0 * PI;// 90 / RAD_TO_DEG;
                     fabrik2D.SetAngularConstraints(angularConstraints);
                     fabrik2D.setTolerance(0.5f);
                     ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -2859,12 +2859,16 @@ int main(int, char**)
                     ImGui::Text("angle0 %f", fabrik2D.getAngle(0) * RAD_TO_DEG);
                     ImGui::Text("angle1 %f", fabrik2D.getAngle(1) * RAD_TO_DEG);
                     ImGui::Text("angle2 %f", fabrik2D.getAngle(2) * RAD_TO_DEG);
+                    ImGui::Text("POS0 %f, %f", fabrik2D.getX(0), fabrik2D.getY(0));
+                    ImGui::Text("POS1 %f, %f", fabrik2D.getX(1), fabrik2D.getY(1));
+                    ImGui::Text("POS2 %f, %f", fabrik2D.getX(2), fabrik2D.getY(2));
+                    ImGui::Text("POS3 %f, %f", fabrik2D.getX(3), fabrik2D.getY(3));
                     ImVec2 startPos = ImGui::GetCursorScreenPos();
                     ImVec2 windowSize;
                     windowSize.x = ImGui::GetWindowWidth();
                     windowSize.y = ImGui::GetWindowHeight();
                     startPos.x = startPos.x + windowSize.x / 2;
-                    startPos.y = startPos.y + 200;// windowSize.y / 2;
+                    startPos.y = startPos.y + 100;// windowSize.y / 2;
 
                     //static double prevToolSetpointX = 0;
                     //static uint64_t prevToolTimeX = 0;
@@ -2883,8 +2887,8 @@ int main(int, char**)
                     if (firstLoopX)
                     {
                         firstLoopX = false;
-                        toolSetpointX.max_velocity = 200;
-                        toolSetpointX.max_acceleration = 250;
+                        toolSetpointX.max_velocity = 20;
+                        toolSetpointX.max_acceleration = 25;
                         toolSetpointX.last_update = 0;
                     }
                     toolSetpointX.target_value = value_raw.x;
@@ -2896,8 +2900,8 @@ int main(int, char**)
                     if (firstLoopY)
                     {
                         firstLoopY = false;
-                        toolSetpointY.max_velocity = 200;
-                        toolSetpointY.max_acceleration = 250;
+                        toolSetpointY.max_velocity = 20;
+                        toolSetpointY.max_acceleration = 25;
                         toolSetpointY.last_update = 0;
                     }
                     toolSetpointY.target_value = value_raw.y;
@@ -2919,11 +2923,31 @@ int main(int, char**)
                     float y = y_offset + radius * sin(ang * 1000 / 57296);
                     draw_list->AddLine(ImVec2(startPos.x + armPoints[0].x, startPos.y + armPoints[0].y), ImVec2(startPos.x + armPoints[1].x, startPos.y + armPoints[1].y), col, th);
                     //fabrik2D.solve(toolSetpointX.current_value, toolSetpointY.current_value, toolAngle / RAD_TO_DEG, lengths);
-                    fabrik2D.solve(value_raw.x, value_raw.y, toolAngle / RAD_TO_DEG, lengths);
+                    //int ikReturn = fabrik2D.solve(value_raw.x, value_raw.y, toolAngle / RAD_TO_DEG, lengths);
+                    int ikReturn = fabrik2D.solve2(value_raw.x, value_raw.y, 0, toolAngle / RAD_TO_DEG, 8, lengths);
                     //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y + fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), col, th);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col, th);
+                    static ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
+                    ImU32 col2 = ImColor(colf2);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col2, th);
+                    //*0 if FABRIK could not converge
+                    //    * 1 if FABRIK converged to the set threshold
+                    //    * 2 if FABRIK converged with a higher tolerance value
+                    std::string ikReturnText = "";
+                    switch (ikReturn)
+                    {
+                    case 0:
+                        ikReturnText = "Could not converge";
+                        break;
+                    case 1:
+                        ikReturnText = "Could converge";
+                        break;
+                    case 2:
+                        ikReturnText = "Could converge with higher tolerance";
+                        break;
+                    }
+                    ImGui::Text("ikReturn: %s", ikReturnText.c_str());
                 }
                 ImGui::End();
             }
