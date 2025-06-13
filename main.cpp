@@ -50,7 +50,7 @@ Sudoku sudoku;
 const int NUM_JOINTS = 3;
 int lengths[NUM_JOINTS] = { 39, 36, 18 };
 Fabrik2D::AngularConstraint angularConstraints[NUM_JOINTS];
-static Fabrik2D fabrik2D(4, lengths, 10);
+static Fabrik2D fabrik2D(NUM_JOINTS + 1, lengths, 1);
 
 
 float camDistance = 8.f;
@@ -2822,22 +2822,22 @@ int main(int, char**)
             // 3. Show a CAN endianess playground window
             if (show_kinematics_toggle_window)
             {
-                ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_Appearing);
                 ImGui::Begin("Kinematics", &show_kinematics_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     Fabrik2D::AngularConstraint angularConstraints[3];
-                    angularConstraints[0].min_angle = 2.0 * -PI;// 6 / RAD_TO_DEG;// -90 / RAD_TO_DEG;
-                    angularConstraints[0].max_angle = 2.0 * PI;//80 / RAD_TO_DEG;//90 / RAD_TO_DEG;
-                    angularConstraints[1].min_angle = 2.0 * -PI;// -90 / RAD_TO_DEG;
-                    angularConstraints[1].max_angle = 2.0 * PI;// 90 / RAD_TO_DEG;
+                    angularConstraints[0].min_angle =  -360 / RAD_TO_DEG;// -90 / RAD_TO_DEG;
+                    angularConstraints[0].max_angle = 360 / RAD_TO_DEG;//90 / RAD_TO_DEG;
+                    angularConstraints[1].min_angle = -360 / RAD_TO_DEG;
+                    angularConstraints[1].max_angle = 360 / RAD_TO_DEG;
                     angularConstraints[2].min_angle = 2.0 * -PI;// -90 / RAD_TO_DEG;
                     angularConstraints[2].max_angle = 2.0 * PI;// 90 / RAD_TO_DEG;
                     fabrik2D.SetAngularConstraints(angularConstraints);
                     fabrik2D.setTolerance(0.5f);
                     ImDrawList* draw_list = ImGui::GetWindowDrawList();
                     static ImVec2 armPoints[4];
-                    static ImVec4 colf = ImVec4(1.0f, 1.0f, 0.4f, 1.0f);
-                    const ImU32 col = ImColor(colf);
+                    ImVec4 colf = ImVec4(1.0f, 1.0f, 0.4f, 1.0f);
+                    ImU32 col = ImColor(colf);
                     static float thickness = 2.0f;
                     float th = thickness;
                     static ImVec2 inverseKinematics;
@@ -2850,19 +2850,27 @@ int main(int, char**)
                     ImGui::SliderFloat("X-Inverse Kinematics", &inverseKinematics.x, 0, 200);
                     ImGui::SliderFloat("Y-Inverse Kinematics", &inverseKinematics.y, 0, 200);
 
+                    static ImVec2 value_raw = ImVec2(50.0f, -10.0f);
                     ImGui::Button("Tool Joystick");
                     if (ImGui::IsItemActive())
+                    {
                         ImGui::GetForegroundDrawList()->AddLine(io.MouseClickedPos[0], io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f); // Draw a line between the button and the mouse cursor
-                    ImVec2 value_raw = ImGui::GetMouseDragDelta(0, 0.0f);
-
+                        value_raw = ImGui::GetMouseDragDelta(0, 0.0f);
+                    }
                     ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
-                    ImGui::Text("angle0 %f", fabrik2D.getAngle(0) * RAD_TO_DEG);
-                    ImGui::Text("angle1 %f", fabrik2D.getAngle(1) * RAD_TO_DEG);
-                    ImGui::Text("angle2 %f", fabrik2D.getAngle(2) * RAD_TO_DEG);
-                    ImGui::Text("POS0 %f, %f", fabrik2D.getX(0), fabrik2D.getY(0));
-                    ImGui::Text("POS1 %f, %f", fabrik2D.getX(1), fabrik2D.getY(1));
-                    ImGui::Text("POS2 %f, %f", fabrik2D.getX(2), fabrik2D.getY(2));
-                    ImGui::Text("POS3 %f, %f", fabrik2D.getX(3), fabrik2D.getY(3));
+                    ImGui::Text("X/Y Setpoint: %.2f/%.2f", value_raw.x, value_raw.y);
+                    ImGui::Text("angle0: %.2f°", fabrik2D.getAngle(0) * RAD_TO_DEG);
+                    ImGui::SameLine();
+                    ImGui::Text("angle1: %.2f°", fabrik2D.getAngle(1) * RAD_TO_DEG);
+                    ImGui::SameLine();
+                    ImGui::Text("angle2: %.2f°", fabrik2D.getAngle(2) * RAD_TO_DEG);
+                    ImGui::Text("POS0: %.2f/%.2f", fabrik2D.getX(0), fabrik2D.getY(0));
+                    ImGui::SameLine();
+                    ImGui::Text("POS1: %.2f/%.2f", fabrik2D.getX(1), fabrik2D.getY(1));
+                    ImGui::SameLine();
+                    ImGui::Text("POS2: %.2f/%.2f", fabrik2D.getX(2), fabrik2D.getY(2));
+                    ImGui::SameLine();
+                    ImGui::Text("POS3: %.2f/%.2f", fabrik2D.getX(3), fabrik2D.getY(3));
                     ImVec2 startPos = ImGui::GetCursorScreenPos();
                     ImVec2 windowSize;
                     windowSize.x = ImGui::GetWindowWidth();
@@ -2921,14 +2929,13 @@ int main(int, char**)
                     // Move x and y in a circular motion
                     float x = x_offset + radius * cos(ang * 1000 / 57296);
                     float y = y_offset + radius * sin(ang * 1000 / 57296);
-                    draw_list->AddLine(ImVec2(startPos.x + armPoints[0].x, startPos.y + armPoints[0].y), ImVec2(startPos.x + armPoints[1].x, startPos.y + armPoints[1].y), col, th);
                     //fabrik2D.solve(toolSetpointX.current_value, toolSetpointY.current_value, toolAngle / RAD_TO_DEG, lengths);
                     //int ikReturn = fabrik2D.solve(value_raw.x, value_raw.y, toolAngle / RAD_TO_DEG, lengths);
-                    int ikReturn = fabrik2D.solve2(value_raw.x, value_raw.y, 0, toolAngle / RAD_TO_DEG, 8, lengths);
+                    int ikReturn = fabrik2D.solve2(value_raw.x, value_raw.y, 0, toolAngle / RAD_TO_DEG, lengths);
                     //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y + fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), col, th);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
-                    static ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
+                    ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
                     ImU32 col2 = ImColor(colf2);
                     draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col2, th);
                     //*0 if FABRIK could not converge
@@ -2947,6 +2954,30 @@ int main(int, char**)
                         ikReturnText = "Could converge with higher tolerance";
                         break;
                     }
+
+                    fabrik2D.l[1] = lengths[0];
+                    fabrik2D.l[2] = lengths[1];
+                    fabrik2D.l[3] = lengths[2];
+                    fabrik2D.tw = value_raw.x;
+                    fabrik2D.tz = value_raw.y;
+                    fabrik2D.calcP2();
+                    fabrik2D.calcP1();
+
+                    // TODO - RM: THIS IS A SECOND METHOD THAT MAY BE SIMPLER AND WORK BETTER AS A STARTING POINT, DEFINITELY MORE STABLE STARTING OUT...
+                    colf = ImVec4(0.0f, 1.0f, 0.4f, 1.0f);
+                    col = ImColor(colf);
+
+                    //col = ImColor(ImVec4(0.0f, 1.0f, 0.1f, 1.0f));
+                    colf2 = ImVec4(0.0f, 1.0f, 0.1f, 1.0f);
+                    col2 = ImColor(colf2);
+                    //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[0], startPos.y + fabrik2D.z[0]), ImVec2(startPos.x + fabrik2D.w[1], startPos.y + fabrik2D.z[1]), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[1], startPos.y + fabrik2D.z[1]), ImVec2(startPos.x + fabrik2D.w[2], startPos.y + fabrik2D.z[2]), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[2], startPos.y + fabrik2D.z[2]), ImVec2(startPos.x + fabrik2D.tw, startPos.y + fabrik2D.tz), col, th);
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
+                    //static ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
+                    //ImU32 col2 = ImColor(colf2);
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col2, th);
                     ImGui::Text("ikReturn: %s", ikReturnText.c_str());
                 }
                 ImGui::End();

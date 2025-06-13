@@ -31,8 +31,32 @@
 
 //#include "Arduino.h"
 
+const int nLinks = 3;
+
 class Fabrik2D {
  public:
+     // START - COMPLETELY DIFFERENT ALGORITHM HERE
+     //const int nLinks = 3;
+     //int nGripperAngles = 5;
+     int GripperAngle;
+     //int linkStrokeW[] = { 28, 18, 12 };
+     //int linkColor[] = { #00D000, #0000FF, #FF0000 };
+     int l[nLinks + 1] = { 0, 39, 36, 10 };
+     //int h0 = 180; //Arm Origen in Screen Coordinates
+     //int v0 = 360; //Arm Origen in Screen Coordinates
+     int currGripper = 0;
+
+     float w[nLinks]; //horizontal coordinate, corresponds to P0, P1, P2 etc
+     float z[nLinks]; //vertical coordinate
+     float a[nLinks];  //angle for the link, reference is previous link
+     float tw, tz; //target coordinate for the actuator (gripper)
+     float tw0, tz0; //Previous target coordinate for the actuator (gripper) that was inside the robot reach
+     float l12;
+     float a12;
+
+     void calcP1();
+     void calcP2();
+     // END - COMPLETELY DIFFERENT ALGORITHM HERE
     /// An angular constraint
     struct AngularConstraint {
         /// The minimum angle of in radians
@@ -348,7 +372,7 @@ class Fabrik2D {
      *
      * Applies angular constraints to a joint, based on the position of parent_joint
      */
-    void _applyAngularConstraints(Joint const& parent_joint, Joint const& joint, Joint& next_joint);
+    void _applyAngularConstraints(Joint const& parent_joint, Joint & joint, Joint& next_joint);
 };
 
 #endif  // SRC_FABRIK2D_H_

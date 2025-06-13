@@ -31,7 +31,22 @@
  // Defined epsilon value which is considered as 0
 #define EPSILON_VALUE 0.001
 
+// START - COMPLETELY DIFFERENT ALGORITHM HERE
+void Fabrik2D::calcP2()
+{
+    w[2] = tw - cos(GripperAngle) * l[3];
+    z[2] = tz - sin(GripperAngle) * l[3];
+    l12 = sqrt((w[2] * w[2]) + (z[2] * z[2]));
+}
 
+void Fabrik2D::calcP1()
+{
+    a12 = atan2(z[2], w[2]);
+    a[1] = acos(((l[1] * l[1]) + (l12 * l12) - (l[2] * l[2])) / (2 * l[1] * l12)) + a12;
+    w[1] = cos(a[1]) * l[1];
+    z[1] = sin(a[1]) * l[1];
+}
+// END - COMPLETELY DIFFERENT ALGORITHM HERE
 Fabrik2D::Fabrik2D(int numJoints, int lengths[], float tolerance) {
     this->_numJoints = numJoints;
     _createChain(lengths);
@@ -198,10 +213,10 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
                 float ny = this->_chain->joints[i + 1].y;
                 float r_i = _distance(jx, jy, nx, ny);
                 float lambda_i = 0.0f;
-                if (r_i != 0.0f) // don't divide by zero my friend
-                {
+                //if (r_i != 0.0f) // don't divide by zero my friend
+                //{
                     lambda_i = static_cast<float>(lengths[i]) / r_i;
-                }
+                //}
 
                 // Find the new joint positions
                 this->_chain->joints[i].x = static_cast<float>((1 - lambda_i) * nx + lambda_i * jx);
@@ -222,10 +237,10 @@ uint8_t Fabrik2D::solve(float x, float y, int lengths[]) {
                 float ny = this->_chain->joints[i].y;
                 float r_i = _distance(jx, jy, nx, ny);
                 float lambda_i = 0.0f;
-                if (r_i != 0.0f) // don't divide by zero my friend
-                {
+                //if (r_i != 0.0f) // don't divide by zero my friend
+                //{
                     lambda_i = static_cast<float>(lengths[i]) / r_i;
-                }
+                //}
 
                 // Find the new joint positions
                 this->_chain->joints[i + 1].x =
@@ -464,7 +479,7 @@ float Fabrik2D::_angleBetween(float x1, float y1, float x2, float y2) {
     return acos(dot / (mag1 * mag2));
 }
 
-void Fabrik2D::_applyAngularConstraints(Joint const& parent_joint, Joint const& joint,
+void Fabrik2D::_applyAngularConstraints(Joint const& parent_joint, Joint & joint,
     Joint& next_joint) {
     float px = joint.x - parent_joint.x;
     float py = joint.y - parent_joint.y;
@@ -486,14 +501,29 @@ void Fabrik2D::_applyAngularConstraints(Joint const& parent_joint, Joint const& 
     if (current_angle != clamped_angle) {
         float angle_diff = clamped_angle - current_angle;
 
-        // Rotate the next joint around the current joint by the angle difference
-        float cos_angle = cos(angle_diff);
-        float sin_angle = sin(angle_diff);
+        // START - TEST CODE BY RYAN
+        // Rotate the current joint around by the constrained angle
+        {
+            //float cos_angle = cos(clamped_angle);
+            //float sin_angle = sin(clamped_angle);
 
-        float new_x = nx * cos_angle - nx * sin_angle;
-        float new_y = nx * sin_angle + nx * cos_angle;
+            //float new_x = px * cos_angle - px * sin_angle;
+            //float new_y = px * sin_angle + px * cos_angle;
 
-        next_joint.x = joint.x + new_x;
-        next_joint.y = joint.y + new_y;
+            //joint.x = new_x;
+            //joint.y = new_y;
+        }
+        // END - TEST CODE BY RYAN
+        {
+            // Rotate the next joint around the current joint by the angle difference
+            float cos_angle = cos(angle_diff);
+            float sin_angle = sin(angle_diff);
+
+            float new_x = nx * cos_angle - nx * sin_angle;
+            float new_y = nx * sin_angle + nx * cos_angle;
+
+            next_joint.x = joint.x + new_x;
+            next_joint.y = joint.y + new_y;
+        }
     }
 }
