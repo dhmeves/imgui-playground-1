@@ -2856,6 +2856,7 @@ int main(int, char**)
                     {
                         ImGui::GetForegroundDrawList()->AddLine(io.MouseClickedPos[0], io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f); // Draw a line between the button and the mouse cursor
                         value_raw = ImGui::GetMouseDragDelta(0, 0.0f);
+                        value_raw = ImVec2(value_raw.x, -value_raw.y); // invert y cause it's upside down in GUIs
                     }
                     ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
                     ImGui::Text("X/Y Setpoint: %.2f/%.2f", value_raw.x, value_raw.y);
@@ -2933,11 +2934,11 @@ int main(int, char**)
                     //int ikReturn = fabrik2D.solve(value_raw.x, value_raw.y, toolAngle / RAD_TO_DEG, lengths);
                     int ikReturn = fabrik2D.solve2(value_raw.x, value_raw.y, 0, toolAngle / RAD_TO_DEG, lengths);
                     //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y + fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y - fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), col, th);
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), col, th);
                     ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
                     ImU32 col2 = ImColor(colf2);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col2, th);
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y - fabrik2D.getY(3)), col2, th);
                     //*0 if FABRIK could not converge
                     //    * 1 if FABRIK converged to the set threshold
                     //    * 2 if FABRIK converged with a higher tolerance value
@@ -2968,12 +2969,12 @@ int main(int, char**)
                     col = ImColor(colf);
 
                     //col = ImColor(ImVec4(0.0f, 1.0f, 0.1f, 1.0f));
-                    colf2 = ImVec4(0.0f, 1.0f, 0.1f, 1.0f);
+                    colf2 = ImVec4(1.0f, 0.0f, 0.1f, 1.0f);
                     col2 = ImColor(colf2);
                     //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[0], startPos.y + fabrik2D.z[0]), ImVec2(startPos.x + fabrik2D.w[1], startPos.y + fabrik2D.z[1]), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[1], startPos.y + fabrik2D.z[1]), ImVec2(startPos.x + fabrik2D.w[2], startPos.y + fabrik2D.z[2]), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[2], startPos.y + fabrik2D.z[2]), ImVec2(startPos.x + fabrik2D.tw, startPos.y + fabrik2D.tz), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[0], startPos.y - fabrik2D.z[0]), ImVec2(startPos.x + fabrik2D.w[1], startPos.y - fabrik2D.z[1]), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[1], startPos.y - fabrik2D.z[1]), ImVec2(startPos.x + fabrik2D.w[2], startPos.y - fabrik2D.z[2]), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[2], startPos.y - fabrik2D.z[2]), ImVec2(startPos.x + fabrik2D.tw, startPos.y - fabrik2D.tz), col2, th);
                     //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
                     //static ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
                     //ImU32 col2 = ImColor(colf2);
