@@ -82,7 +82,7 @@ float getMin(float arr[], size_t lenArray);
 float getMax(float arr[], size_t lenArray);
 
 
-const int polyCorners = 15;// how many corners the polygon has(no repeats)
+const int polyCorners = 20;// how many corners the polygon has(no repeats)
 
 class TimersAndCalculations
 {

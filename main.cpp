@@ -3003,8 +3003,49 @@ int main(int, char**)
                     startPos.x = startPos.x + windowSize.x / 2;
                     startPos.y = startPos.y + 100;// windowSize.y / 2;
 
-                    const int numPoints_polygon = 15;
+                    const int numPoints_polygon = 20;
                     ImVec2 complexPolygon[numPoints_polygon];
+
+                    // Draw an angry pac-man
+                    complexPolygon[0] = startPos + ImVec2(0, 0);
+                    complexPolygon[1] = startPos + ImVec2(90, 0);
+                    complexPolygon[2] = startPos + ImVec2(100, 40);
+                    complexPolygon[3] = startPos + ImVec2(70, 40);
+                    complexPolygon[4] = startPos + ImVec2(60, 20);
+                    complexPolygon[5] = startPos + ImVec2(40, 20);
+                    complexPolygon[6] = startPos + ImVec2(30, 40);
+                    complexPolygon[7] = startPos + ImVec2(0, 40);
+                    complexPolygon[8] = startPos + ImVec2(0, 70);
+                    complexPolygon[9] = startPos + ImVec2(30, 100);
+                    complexPolygon[10] = startPos + ImVec2(40, 60);
+                    complexPolygon[11] = startPos + ImVec2(60, 60);
+                    complexPolygon[12] = startPos + ImVec2(70, 100);
+                    complexPolygon[13] = startPos + ImVec2(70, 120);
+                    complexPolygon[14] = startPos + ImVec2(-20, 120);
+                    complexPolygon[15] = startPos + ImVec2(-10, 0);
+                    complexPolygon[16] = startPos + ImVec2(0, 0);
+                    complexPolygon[17] = startPos + ImVec2(0, 0);
+                    complexPolygon[18] = startPos + ImVec2(0, 0);
+                    complexPolygon[19] = startPos + ImVec2(0, 0);
+
+                    for (int i = 0; i < numPoints_polygon; i++)
+                    {
+                        TaC.polyX[i] = complexPolygon[i].x;
+                        TaC.polyY[i] = complexPolygon[i].y;
+                    }
+                    TaC.precalc_values(); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
+
+                    TaC.x = ImGui::GetMousePos().x;
+                    TaC.y = ImGui::GetMousePos().y;
+                    bool pointInPolygon = TaC.pointInPolygon();
+
+                    //ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                    //pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
+
+                    draw_list->AddConcavePolyFilled(complexPolygon, numPoints_polygon, col);
+
+                    // Draw a cross
+                    startPos = startPos + ImVec2(0, 150); // offset cross by 150 in y direction
                     complexPolygon[0] = startPos + ImVec2(0, 30);
                     complexPolygon[1] = startPos + ImVec2(35, 30);
                     complexPolygon[2] = startPos + ImVec2(35, 0);
@@ -3020,6 +3061,11 @@ int main(int, char**)
                     complexPolygon[12] = startPos + ImVec2(0, 30);
                     complexPolygon[13] = startPos + ImVec2(0, 30);
                     complexPolygon[14] = startPos + ImVec2(0, 30);
+                    complexPolygon[15] = startPos + ImVec2(0, 30);
+                    complexPolygon[16] = startPos + ImVec2(0, 30);
+                    complexPolygon[17] = startPos + ImVec2(0, 30);
+                    complexPolygon[18] = startPos + ImVec2(0, 30);
+                    complexPolygon[19] = startPos + ImVec2(0, 30);
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
@@ -3030,10 +3076,10 @@ int main(int, char**)
 
                     TaC.x = ImGui::GetMousePos().x;
                     TaC.y = ImGui::GetMousePos().y;
-                    bool pointInPolygon = TaC.pointInPolygon();
+                    pointInPolygon |= TaC.pointInPolygon();
 
-                    ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-                    pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
+                    ImGui::Text("Cursor: %.0f/%.0f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                    ImGui::Text("Cursor is %s shape", pointInPolygon ? "inside" : "outside");
 
                     draw_list->AddConcavePolyFilled(complexPolygon, numPoints_polygon, col);
                 }
