@@ -51,31 +51,15 @@ public:
     {
         Joint joints[NUM_LINKS + 1];
         float gripperAngle;
-        float targetX;
-        float targetY;
         float prevTargetX;
         float prevTargetY;
     };
-
-    //int GripperAngle;
-    //int linkStrokeW[] = { 28, 18, 12 };
-    //int linkColor[] = { #00D000, #0000FF, #FF0000 };
-    //int lengths[NUM_LINKS] = { 0, 39, 36, 10 };
-    //int h0 = 180; //Arm Origen in Screen Coordinates
-    //int v0 = 360; //Arm Origen in Screen Coordinates
-    //int currGripper = 0;
-
-    //float x[NUM_LINKS]; //horizontal coordinate, corresponds to J0, J1, J2, J3, etc
-    //float y[NUM_LINKS]; //vertical coordinate
-    //float a[NUM_LINKS];  //angle for the link, reference is previous link
-    //float tx, ty; //target coordinate for the actuator (gripper)
-    //float tx0, ty0; //Previous target coordinate for the actuator (gripper) that was inside the robot reach
-    //float l12;
-    //float a12;
 
     void fsciks_init(Arm* arm);
 
     IK_CONVERGENCE_E calcP1(Arm* arm);
     IK_CONVERGENCE_E calcP2(Arm* arm);
+    float getAngle(Arm arm, unsigned int joint);
+
 private:
 };

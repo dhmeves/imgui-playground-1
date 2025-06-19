@@ -2839,50 +2839,22 @@ int main(int, char**)
                     fabrik2D.SetAngularConstraints(angularConstraints);
                     fabrik2D.setTolerance(0.5f);
                     ImDrawList* draw_list = ImGui::GetWindowDrawList();
-                    static ImVec2 armPoints[4];
-                    ImVec4 colf = ImVec4(1.0f, 1.0f, 0.4f, 1.0f);
-                    ImU32 col = ImColor(colf);
                     static float thickness = 2.0f;
-                    float th = thickness;
-                    static ImVec2 inverseKinematics;
                     static float toolAngle;
-                    ImGui::SliderFloat("thickness", &thickness, 0, 100);
-                    ImGui::SliderFloat("point0", &armPoints[0].x, 0, 100);
-                    ImGui::SliderFloat("point1", &armPoints[0].y, 0, 100);
-                    ImGui::SliderFloat("point2", &armPoints[1].x, 0, 100);
-                    ImGui::SliderFloat("point3", &armPoints[1].y, 0, 100);
-                    ImGui::SliderFloat("toolAngle", &toolAngle, -90, 90, "%.0f");
-                    ImGui::SliderFloat("X-Inverse Kinematics", &inverseKinematics.x, 0, 200);
-                    ImGui::SliderFloat("Y-Inverse Kinematics", &inverseKinematics.y, 0, 200);
+                    ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
 
-                    static ImVec2 value_raw = ImVec2(50.0f, -10.0f);
+                    ImGuiIO& io = ImGui::GetIO();
+                    toolAngle += (5 * io.MouseWheel); // rotate 5 degrees per mouse scroll just for fun
+                    static ImVec2 targetPosition = ImVec2(50.0f, -10.0f);
                     ImGui::Button("Tool Joystick");
                     if (ImGui::IsItemActive())
                     {
                         ImGui::GetForegroundDrawList()->AddLine(io.MouseClickedPos[0], io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f); // Draw a line between the button and the mouse cursor
-                        value_raw = ImGui::GetMouseDragDelta(0, 0.0f);
-                        value_raw = ImVec2(value_raw.x, -value_raw.y); // invert y cause it's upside down in GUIs
+                        targetPosition = ImGui::GetMouseDragDelta(0, 0.0f);
+                        targetPosition = ImVec2(targetPosition.x, -targetPosition.y); // invert y cause it's upside down in GUIs
                     }
-                    ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
-                    ImGui::Text("X/Y Setpoint: %.2f/%.2f", value_raw.x, value_raw.y);
-                    ImGui::Text("angle0: %.2f°", fabrik2D.getAngle(0) * RAD_TO_DEG);
-                    ImGui::SameLine();
-                    ImGui::Text("angle1: %.2f°", fabrik2D.getAngle(1) * RAD_TO_DEG);
-                    ImGui::SameLine();
-                    ImGui::Text("angle2: %.2f°", fabrik2D.getAngle(2) * RAD_TO_DEG);
-                    ImGui::Text("POS0: %.2f/%.2f", fabrik2D.getX(0), fabrik2D.getY(0));
-                    ImGui::SameLine();
-                    ImGui::Text("POS1: %.2f/%.2f", fabrik2D.getX(1), fabrik2D.getY(1));
-                    ImGui::SameLine();
-                    ImGui::Text("POS2: %.2f/%.2f", fabrik2D.getX(2), fabrik2D.getY(2));
-                    ImGui::SameLine();
-                    ImGui::Text("POS3: %.2f/%.2f", fabrik2D.getX(3), fabrik2D.getY(3));
-                    ImVec2 startPos = ImGui::GetCursorScreenPos();
-                    ImVec2 windowSize;
-                    windowSize.x = ImGui::GetWindowWidth();
-                    windowSize.y = ImGui::GetWindowHeight();
-                    startPos.x = startPos.x + windowSize.x / 2;
-                    startPos.y = startPos.y + 100;// windowSize.y / 2;
+
+
 
                     //static double prevToolSetpointX = 0;
                     //static uint64_t prevToolTimeX = 0;
@@ -2896,6 +2868,41 @@ int main(int, char**)
                     //double toolSetpointY = RampScale(prevToolSetpointY, value_raw.y, 10, 200, &prevToolTimeY, 2000, &finishedMovementY);
                     //prevToolSetpointY = toolSetpointY;
 
+                    //static float ang = 0;
+                    //static int counter = 0;
+                    //uint64_t prevTime = 0;
+                    //if (Timer(prevTime, 10, true))
+                    //{
+                    //    ang = ((int)(ang + 1)) % 360;
+                    //}
+                    //float radius = 30;
+                    //float x_offset = 100;
+                    //float y_offset = 150;
+                    // Move x and y in a circular motion
+                    //float x = x_offset + radius * cos(ang * 1000 / 57296);
+                    //float y = y_offset + radius * sin(ang * 1000 / 57296);
+                    //fabrik2D.solve(toolSetpointX.current_value, toolSetpointY.current_value, toolAngle / RAD_TO_DEG, lengths);
+                    //int ikReturn = fabrik2D.solve(value_raw.x, value_raw.y, toolAngle / RAD_TO_DEG, lengths);
+                    //int ikReturn = fabrik2D.solve2(value_raw.x, value_raw.y, 0, toolAngle / RAD_TO_DEG, lengths);
+                    //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y - fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), col, th);
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), col, th);
+                    
+                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y - fabrik2D.getY(3)), col2, th);
+                    //*0 if FABRIK could not converge
+                    //    * 1 if FABRIK converged to the set threshold
+                    //    * 2 if FABRIK converged with a higher tolerance value
+                    
+
+
+
+                    ImVec2 startPos = ImGui::GetCursorScreenPos();
+                    ImVec2 windowSize;
+                    windowSize.x = ImGui::GetWindowWidth();
+                    windowSize.y = ImGui::GetWindowHeight();
+                    startPos.x = startPos.x + windowSize.x / 2;
+                    startPos.y = startPos.y + 150;// windowSize.y / 2;
+
                     static MotionProfile toolSetpointX;
                     static bool firstLoopX = true;
                     if (firstLoopX)
@@ -2905,9 +2912,9 @@ int main(int, char**)
                         toolSetpointX.max_acceleration = 25;
                         toolSetpointX.last_update = 0;
                     }
-                    toolSetpointX.target_value = value_raw.x;
+                    toolSetpointX.target_value = targetPosition.x;
                     update_motion(&toolSetpointX);
-                    //toolSetpointX.last_update = toolSetpointX.current_value;
+                    toolSetpointX.last_update = toolSetpointX.current_value;
 
                     static MotionProfile toolSetpointY;
                     static bool firstLoopY = true;
@@ -2918,48 +2925,55 @@ int main(int, char**)
                         toolSetpointY.max_acceleration = 25;
                         toolSetpointY.last_update = 0;
                     }
-                    toolSetpointY.target_value = value_raw.y;
+                    toolSetpointY.target_value = targetPosition.y;
                     update_motion(&toolSetpointY);
-                    //toolSetpointY.last_update = toolSetpointY.current_value;
+                    toolSetpointY.last_update = toolSetpointY.current_value;
 
-                    static float ang = 0;
-                    static int counter = 0;
-                    uint64_t prevTime = 0;
-                    if (Timer(prevTime, 10, true))
-                    {
-                        ang = ((int)(ang + 1)) % 360;
-                    }
-                    float radius = 30;
-                    float x_offset = 100;
-                    float y_offset = 150;
-                    // Move x and y in a circular motion
-                    float x = x_offset + radius * cos(ang * 1000 / 57296);
-                    float y = y_offset + radius * sin(ang * 1000 / 57296);
-                    //fabrik2D.solve(toolSetpointX.current_value, toolSetpointY.current_value, toolAngle / RAD_TO_DEG, lengths);
-                    //int ikReturn = fabrik2D.solve(value_raw.x, value_raw.y, toolAngle / RAD_TO_DEG, lengths);
-                    int ikReturn = fabrik2D.solve2(value_raw.x, value_raw.y, 0, toolAngle / RAD_TO_DEG, lengths);
-                    //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
-                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y - fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), col, th);
-                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), col, th);
-                    ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
-                    ImU32 col2 = ImColor(colf2);
-                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y - fabrik2D.getY(3)), col2, th);
-                    //*0 if FABRIK could not converge
-                    //    * 1 if FABRIK converged to the set threshold
-                    //    * 2 if FABRIK converged with a higher tolerance value
+                    Fsciks::Arm arm;
+
+                    arm.joints[0].length = 0; // first joint is what we are considering the origin
+                    arm.joints[1].length = lengths[0];
+                    arm.joints[2].length = lengths[1];
+                    arm.joints[3].length = lengths[2];
+
+                    arm.joints[0].constraint.min_angle = -8.45; // all angle constraints are confirmed via solidworks
+                    arm.joints[0].constraint.max_angle = 50.73;
+                    arm.joints[1].constraint.min_angle = -56.45;
+                    arm.joints[1].constraint.max_angle = -131.64;
+                    arm.joints[2].constraint.min_angle = -35.14;
+                    arm.joints[2].constraint.max_angle = 92.03;
+
+                    arm.joints[0].x = 0.0f;
+                    arm.joints[0].y = 0.0f;
+
+                    arm.joints[3].x = targetPosition.x;
+                    arm.joints[3].y = targetPosition.y;
+
+                    arm.gripperAngle = toolAngle / RAD_TO_DEG;
+
+                    fsciks.fsciks_init(&arm);
+                    IK_CONVERGENCE_E p2Converges = fsciks.calcP2(&arm);
+                    IK_CONVERGENCE_E p1Converges = fsciks.calcP1(&arm);
+
                     std::string ikReturnText = "";
-                    switch (ikReturn)
+                    switch (p2Converges)
                     {
-                    case 0:
-                        ikReturnText = "Could not converge";
-                        break;
-                    case 1:
+                    case CONVERGES:
                         ikReturnText = "Could converge";
                         break;
-                    case 2:
-                        ikReturnText = "Could converge with higher tolerance";
+                    case CONVERGENCE_NOT_POSSIBLE:
+                        ikReturnText = "Could not converge";
                         break;
                     }
+
+                    // Draw Arm
+                    ImVec4 colf = ImVec4(0.0f, 1.0f, 0.4f, 1.0f);
+                    ImU32 colArm = ImColor(colf);
+                    ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
+                    ImU32 colGripper = ImColor(colf2);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[0].x, startPos.y - arm.joints[0].y), ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), colArm, thickness);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), colArm, thickness);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), ImVec2(startPos.x + arm.joints[3].x, startPos.y - arm.joints[3].y), colGripper, thickness);
 
                     const int numPoints_polygon = 20;
                     ImVec2 boundsPolygon[numPoints_polygon];
@@ -2992,59 +3006,32 @@ int main(int, char**)
                     }
                     TaC.precalc_values(); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    TaC.x = startPos.x + value_raw.x;
-                    TaC.y = startPos.y - value_raw.y;
+                    TaC.x = startPos.x + targetPosition.x;
+                    TaC.y = startPos.y - targetPosition.y;
                     bool pointInBounds = TaC.pointInPolygon();
 
-                    ImGui::Text("End-effector joint is %s shape", pointInBounds ? "inside" : "outside");
                     ImVec4 colfInsideBounds = ImVec4(0.0f, 1.0f, 0.0f, 0.2f);
                     ImVec4 colfOutsideBounds = ImVec4(1.0f, 0.0f, 0.0f, 0.2f);
                     ImU32 boundsCol = pointInBounds ? ImColor(colfInsideBounds) : ImColor(colfOutsideBounds);
                     draw_list->AddConcavePolyFilled(boundsPolygon, numPoints_polygon, boundsCol);
 
-                    // TODO - RM: THIS IS A SECOND METHOD THAT MAY BE SIMPLER AND WORK BETTER AS A STARTING POINT, DEFINITELY MORE STABLE STARTING OUT...
-                    Fsciks::Arm arm;
-
-                    arm.joints[0].length = 0; // first joint is what we are considering the origin
-                    arm.joints[1].length = lengths[0];
-                    arm.joints[2].length = lengths[1];
-                    arm.joints[3].length = lengths[2];
-
-                    arm.joints[0].constraint.min_angle = -8.45; // all angle constraints are confirmed via solidworks
-                    arm.joints[0].constraint.max_angle = 50.73;
-
-                    arm.joints[1].constraint.min_angle = -56.45;
-                    arm.joints[1].constraint.max_angle = -131.64;
-
-                    arm.joints[2].constraint.min_angle = -35.14;
-                    arm.joints[2].constraint.max_angle = 92.03;
-
-                    arm.joints[0].x = 0.0f;
-                    arm.joints[0].y = 0.0f;
-
-                    arm.targetX = value_raw.x;
-                    arm.targetY = value_raw.y;
-                    arm.gripperAngle = toolAngle / RAD_TO_DEG;
-
-                    fsciks.fsciks_init(&arm);
-                    IK_CONVERGENCE_E p2Converges = fsciks.calcP2(&arm);
-                    IK_CONVERGENCE_E p1Converges = fsciks.calcP1(&arm);
-
-                    colf = ImVec4(0.0f, 1.0f, 0.4f, 1.0f);
-                    col = ImColor(colf);
-
-                    //col = ImColor(ImVec4(0.0f, 1.0f, 0.1f, 1.0f));
-                    colf2 = ImVec4(1.0f, 0.0f, 0.1f, 1.0f);
-                    col2 = ImColor(colf2);
-                    //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
-                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[0].x, startPos.y - arm.joints[0].y), ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), ImVec2(startPos.x + arm.targetX, startPos.y - arm.targetY), col2, th);
-                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
-                    //static ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
-                    //ImU32 col2 = ImColor(colf2);
-                    //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col2, th);
+                    // text debugging
                     ImGui::Text("ikReturn: %s", ikReturnText.c_str());
+                    ImGui::Text("X/Y Setpoint: %.2f/%.2f", targetPosition.x, targetPosition.y);
+                    ImGui::Text("angle0: %.2f°", fsciks.getAngle(arm, 0) * RAD_TO_DEG);
+                    ImGui::SameLine();
+                    ImGui::Text("angle1: %.2f°", fsciks.getAngle(arm, 1) * RAD_TO_DEG);
+                    ImGui::SameLine();
+                    ImGui::Text("angle2: %.2f°", fsciks.getAngle(arm, 2) * RAD_TO_DEG);
+                    ImGui::Text("POS0: %.2f/%.2f", arm.joints[0].x, arm.joints[0].y);
+                    ImGui::SameLine();
+                    ImGui::Text("POS1: %.2f/%.2f", arm.joints[1].x, arm.joints[1].y);
+                    ImGui::SameLine();
+                    ImGui::Text("POS2: %.2f/%.2f", arm.joints[2].x, arm.joints[2].y);
+                    ImGui::SameLine();
+                    ImGui::Text("POS3: %.2f/%.2f", arm.joints[3].x, arm.joints[3].y);
+
+                    ImGui::Text("End-effector joint is %s shape", pointInBounds ? "inside" : "outside");
                 }
                 ImGui::End();
             }
