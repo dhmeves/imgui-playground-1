@@ -3017,8 +3017,8 @@ int main(int, char**)
                     complexPolygon[9] = startPos + ImVec2(35, 145);
                     complexPolygon[10] = startPos + ImVec2(35, 60);
                     complexPolygon[11] = startPos + ImVec2(0, 60);
-                    complexPolygon[12] = startPos + ImVec2(0, 32);
-                    complexPolygon[13] = startPos + ImVec2(0, 31);
+                    complexPolygon[12] = startPos + ImVec2(0, 30);
+                    complexPolygon[13] = startPos + ImVec2(0, 30);
                     complexPolygon[14] = startPos + ImVec2(0, 30);
 
                     for (int i = 0; i < numPoints_polygon; i++)
@@ -3035,7 +3035,7 @@ int main(int, char**)
                     ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
                     pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
 
-                    draw_list->AddConvexPolyFilled(complexPolygon, numPoints_polygon, col);
+                    draw_list->AddConcavePolyFilled(complexPolygon, numPoints_polygon, col);
                 }
                 ImGui::End();
             }
