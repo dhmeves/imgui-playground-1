@@ -47,6 +47,8 @@ Kalman kalman;
 
 Sudoku sudoku;
 
+TimersAndCalculations TaC;
+
 const int NUM_JOINTS = 3;
 int lengths[NUM_JOINTS] = { 39, 36, 18 };
 Fabrik2D::AngularConstraint angularConstraints[NUM_JOINTS];
@@ -2826,7 +2828,7 @@ int main(int, char**)
                 ImGui::Begin("Kinematics", &show_kinematics_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     Fabrik2D::AngularConstraint angularConstraints[3];
-                    angularConstraints[0].min_angle =  -360 / RAD_TO_DEG;// -90 / RAD_TO_DEG;
+                    angularConstraints[0].min_angle = -360 / RAD_TO_DEG;// -90 / RAD_TO_DEG;
                     angularConstraints[0].max_angle = 360 / RAD_TO_DEG;//90 / RAD_TO_DEG;
                     angularConstraints[1].min_angle = -360 / RAD_TO_DEG;
                     angularConstraints[1].max_angle = 360 / RAD_TO_DEG;
@@ -2980,6 +2982,60 @@ int main(int, char**)
                     //ImU32 col2 = ImColor(colf2);
                     //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y + fabrik2D.getY(3)), col2, th);
                     ImGui::Text("ikReturn: %s", ikReturnText.c_str());
+                }
+                ImGui::End();
+            }
+            static bool show_geometry_toggle_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_geometry_toggle_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_Appearing);
+                ImGui::Begin("Geometry", &show_geometry_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                    ImVec4 colf = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+                    ImU32 col = ImColor(colf);
+
+                    ImVec2 startPos = ImGui::GetCursorScreenPos();
+                    ImVec2 windowSize;
+                    windowSize.x = ImGui::GetWindowWidth();
+                    windowSize.y = ImGui::GetWindowHeight();
+                    startPos.x = startPos.x + windowSize.x / 2;
+                    startPos.y = startPos.y + 100;// windowSize.y / 2;
+
+                    const int numPoints_polygon = 15;
+                    ImVec2 complexPolygon[numPoints_polygon];
+                    complexPolygon[0] = startPos + ImVec2(0, 30);
+                    complexPolygon[1] = startPos + ImVec2(35, 30);
+                    complexPolygon[2] = startPos + ImVec2(35, 0);
+                    complexPolygon[3] = startPos + ImVec2(65, 0);
+                    complexPolygon[4] = startPos + ImVec2(65, 30);
+                    complexPolygon[5] = startPos + ImVec2(100, 30);
+                    complexPolygon[6] = startPos + ImVec2(100, 60);
+                    complexPolygon[7] = startPos + ImVec2(65, 60);
+                    complexPolygon[8] = startPos + ImVec2(65, 145);
+                    complexPolygon[9] = startPos + ImVec2(35, 145);
+                    complexPolygon[10] = startPos + ImVec2(35, 60);
+                    complexPolygon[11] = startPos + ImVec2(0, 60);
+                    complexPolygon[12] = startPos + ImVec2(0, 32);
+                    complexPolygon[13] = startPos + ImVec2(0, 31);
+                    complexPolygon[14] = startPos + ImVec2(0, 30);
+
+                    for (int i = 0; i < numPoints_polygon; i++)
+                    {
+                        TaC.polyX[i] = complexPolygon[i].x;
+                        TaC.polyY[i] = complexPolygon[i].y;
+                    }
+                    TaC.precalc_values(); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
+
+                    TaC.x = ImGui::GetMousePos().x;
+                    TaC.y = ImGui::GetMousePos().y;
+                    bool pointInPolygon = TaC.pointInPolygon();
+
+                    ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                    pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
+
+                    draw_list->AddConvexPolyFilled(complexPolygon, numPoints_polygon, col);
                 }
                 ImGui::End();
             }

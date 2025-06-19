@@ -426,3 +426,29 @@ float getMax(float arr[], size_t lenArray)
     }
     return output;
 }
+
+void TimersAndCalculations::precalc_values() {
+
+    int   i, j = polyCorners - 1;
+
+    for (i = 0; i < polyCorners; i++) {
+        if (polyY[j] == polyY[i]) {
+            constant[i] = polyX[i];
+            multiple[i] = 0;
+        }
+        else {
+            constant[i] = polyX[i] - (polyY[i] * polyX[j]) / (polyY[j] - polyY[i]) + (polyY[i] * polyX[i]) / (polyY[j] - polyY[i]);
+            multiple[i] = (polyX[j] - polyX[i]) / (polyY[j] - polyY[i]);
+        }
+        j = i;
+    }
+}
+
+bool TimersAndCalculations::pointInPolygon() {
+
+    bool oddNodes = false, current = polyY[polyCorners - 1] > y, previous;
+    for (int i = 0; i < polyCorners; i++) {
+        previous = current; current = polyY[i] > y; if (current != previous) oddNodes ^= y * multiple[i] + constant[i] < x;
+    }
+    return oddNodes;
+}
