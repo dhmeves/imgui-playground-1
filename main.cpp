@@ -2824,7 +2824,7 @@ int main(int, char**)
             // 3. Show a CAN endianess playground window
             if (show_kinematics_toggle_window)
             {
-                ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(500, 750), ImGuiCond_Appearing);
                 ImGui::Begin("Kinematics", &show_kinematics_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     Fabrik2D::AngularConstraint angularConstraints[3];
@@ -2879,7 +2879,7 @@ int main(int, char**)
                     windowSize.x = ImGui::GetWindowWidth();
                     windowSize.y = ImGui::GetWindowHeight();
                     startPos.x = startPos.x + windowSize.x / 2;
-                    startPos.y = startPos.y + 100;// windowSize.y / 2;
+                    startPos.y = startPos.y + 50;// windowSize.y / 2;
 
                     //static double prevToolSetpointX = 0;
                     //static uint64_t prevToolTimeX = 0;
@@ -2957,6 +2957,48 @@ int main(int, char**)
                         ikReturnText = "Could converge with higher tolerance";
                         break;
                     }
+
+                    const int numPoints_polygon = 20;
+                    ImVec2 boundsPolygon[numPoints_polygon];
+                    // Draw the bounds
+                    startPos = startPos + ImVec2(0, 150); // offset cross by 150 in y direction
+                    boundsPolygon[0] = startPos + ImVec2(0, 0);
+                    boundsPolygon[1] = startPos + ImVec2(0, 60);
+                    boundsPolygon[2] = startPos + ImVec2(60, 60);
+                    boundsPolygon[3] = startPos + ImVec2(60, 0);
+                    boundsPolygon[4] = startPos + ImVec2(0, 0);
+                    boundsPolygon[5] = startPos + ImVec2(0, 0);
+                    boundsPolygon[6] = startPos + ImVec2(0, 0);
+                    boundsPolygon[7] = startPos + ImVec2(0, 0);
+                    boundsPolygon[8] = startPos + ImVec2(0, 0);
+                    boundsPolygon[9] = startPos + ImVec2(0, 0);
+                    boundsPolygon[10] = startPos + ImVec2(0, 0);
+                    boundsPolygon[11] = startPos + ImVec2(0, 0);
+                    boundsPolygon[12] = startPos + ImVec2(0, 0);
+                    boundsPolygon[13] = startPos + ImVec2(0, 0);
+                    boundsPolygon[14] = startPos + ImVec2(0, 0);
+                    boundsPolygon[15] = startPos + ImVec2(0, 0);
+                    boundsPolygon[16] = startPos + ImVec2(0, 0);
+                    boundsPolygon[17] = startPos + ImVec2(0, 0);
+                    boundsPolygon[18] = startPos + ImVec2(0, 0);
+                    boundsPolygon[19] = startPos + ImVec2(0, 0);
+
+                    for (int i = 0; i < numPoints_polygon; i++)
+                    {
+                        TaC.polyX[i] = boundsPolygon[i].x;
+                        TaC.polyY[i] = boundsPolygon[i].y;
+                    }
+                    TaC.precalc_values(); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
+
+                    TaC.x = startPos.x + value_raw.x;
+                    TaC.y = startPos.y - value_raw.y;
+                    bool pointInBounds = TaC.pointInPolygon();
+
+                    ImGui::Text("End-effector joint is %s shape", pointInBounds ? "inside" : "outside");
+                    ImVec4 colfInsideBounds = ImVec4(0.0f, 1.0f, 0.0f, 0.2f);
+                    ImVec4 colfOutsideBounds = ImVec4(1.0f, 0.0f, 0.0f, 0.2f);
+                    ImU32 boundsCol = pointInBounds ? ImColor(colfInsideBounds) : ImColor(colfOutsideBounds);
+                    draw_list->AddConcavePolyFilled(boundsPolygon, numPoints_polygon, boundsCol);
 
                     fabrik2D.l[1] = lengths[0];
                     fabrik2D.l[2] = lengths[1];
