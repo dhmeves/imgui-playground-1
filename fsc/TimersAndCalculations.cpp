@@ -427,6 +427,11 @@ float getMax(float arr[], size_t lenArray)
     return output;
 }
 
+float fsc_sqf(float input)
+{
+    return input * input;
+}
+
 void TimersAndCalculations::precalc_values() {
 
     int   i, j = polyCorners - 1;

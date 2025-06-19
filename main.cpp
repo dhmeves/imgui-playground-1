@@ -16,6 +16,7 @@
 #include <fstream>
 #include "kalman.h"
 #include "FABRIK2D.h"
+#include "fsc_iks.h"
 #include "sudoku.h"
 
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
@@ -54,6 +55,7 @@ int lengths[NUM_JOINTS] = { 39, 36, 18 };
 Fabrik2D::AngularConstraint angularConstraints[NUM_JOINTS];
 static Fabrik2D fabrik2D(NUM_JOINTS + 1, lengths, 1);
 
+Fsciks fsciks;
 
 float camDistance = 8.f;
 
@@ -2849,6 +2851,7 @@ int main(int, char**)
                     ImGui::SliderFloat("point1", &armPoints[0].y, 0, 100);
                     ImGui::SliderFloat("point2", &armPoints[1].x, 0, 100);
                     ImGui::SliderFloat("point3", &armPoints[1].y, 0, 100);
+                    ImGui::SliderFloat("toolAngle", &toolAngle, -90, 90, "%.0f");
                     ImGui::SliderFloat("X-Inverse Kinematics", &inverseKinematics.x, 0, 200);
                     ImGui::SliderFloat("Y-Inverse Kinematics", &inverseKinematics.y, 0, 200);
 
@@ -2879,7 +2882,7 @@ int main(int, char**)
                     windowSize.x = ImGui::GetWindowWidth();
                     windowSize.y = ImGui::GetWindowHeight();
                     startPos.x = startPos.x + windowSize.x / 2;
-                    startPos.y = startPos.y + 50;// windowSize.y / 2;
+                    startPos.y = startPos.y + 100;// windowSize.y / 2;
 
                     //static double prevToolSetpointX = 0;
                     //static uint64_t prevToolTimeX = 0;
@@ -2961,7 +2964,6 @@ int main(int, char**)
                     const int numPoints_polygon = 20;
                     ImVec2 boundsPolygon[numPoints_polygon];
                     // Draw the bounds
-                    startPos = startPos + ImVec2(0, 150); // offset cross by 150 in y direction
                     boundsPolygon[0] = startPos + ImVec2(0, 0);
                     boundsPolygon[1] = startPos + ImVec2(0, 60);
                     boundsPolygon[2] = startPos + ImVec2(60, 60);
@@ -3000,15 +3002,34 @@ int main(int, char**)
                     ImU32 boundsCol = pointInBounds ? ImColor(colfInsideBounds) : ImColor(colfOutsideBounds);
                     draw_list->AddConcavePolyFilled(boundsPolygon, numPoints_polygon, boundsCol);
 
-                    fabrik2D.l[1] = lengths[0];
-                    fabrik2D.l[2] = lengths[1];
-                    fabrik2D.l[3] = lengths[2];
-                    fabrik2D.tw = value_raw.x;
-                    fabrik2D.tz = value_raw.y;
-                    fabrik2D.calcP2();
-                    fabrik2D.calcP1();
-
                     // TODO - RM: THIS IS A SECOND METHOD THAT MAY BE SIMPLER AND WORK BETTER AS A STARTING POINT, DEFINITELY MORE STABLE STARTING OUT...
+                    Fsciks::Arm arm;
+
+                    arm.joints[0].length = 0; // first joint is what we are considering the origin
+                    arm.joints[1].length = lengths[0];
+                    arm.joints[2].length = lengths[1];
+                    arm.joints[3].length = lengths[2];
+
+                    arm.joints[0].constraint.min_angle = -8.45; // all angle constraints are confirmed via solidworks
+                    arm.joints[0].constraint.max_angle = 50.73;
+
+                    arm.joints[1].constraint.min_angle = -56.45;
+                    arm.joints[1].constraint.max_angle = -131.64;
+
+                    arm.joints[2].constraint.min_angle = -35.14;
+                    arm.joints[2].constraint.max_angle = 92.03;
+
+                    arm.joints[0].x = 0.0f;
+                    arm.joints[0].y = 0.0f;
+
+                    arm.targetX = value_raw.x;
+                    arm.targetY = value_raw.y;
+                    arm.gripperAngle = toolAngle / RAD_TO_DEG;
+
+                    fsciks.fsciks_init(&arm);
+                    IK_CONVERGENCE_E p2Converges = fsciks.calcP2(&arm);
+                    IK_CONVERGENCE_E p1Converges = fsciks.calcP1(&arm);
+
                     colf = ImVec4(0.0f, 1.0f, 0.4f, 1.0f);
                     col = ImColor(colf);
 
@@ -3016,9 +3037,9 @@ int main(int, char**)
                     colf2 = ImVec4(1.0f, 0.0f, 0.1f, 1.0f);
                     col2 = ImColor(colf2);
                     //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[0], startPos.y - fabrik2D.z[0]), ImVec2(startPos.x + fabrik2D.w[1], startPos.y - fabrik2D.z[1]), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[1], startPos.y - fabrik2D.z[1]), ImVec2(startPos.x + fabrik2D.w[2], startPos.y - fabrik2D.z[2]), col, th);
-                    draw_list->AddLine(ImVec2(startPos.x + fabrik2D.w[2], startPos.y - fabrik2D.z[2]), ImVec2(startPos.x + fabrik2D.tw, startPos.y - fabrik2D.tz), col2, th);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[0].x, startPos.y - arm.joints[0].y), ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), col, th);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), ImVec2(startPos.x + arm.targetX, startPos.y - arm.targetY), col2, th);
                     //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y + fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y + fabrik2D.getY(2)), col, th);
                     //static ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
                     //ImU32 col2 = ImColor(colf2);

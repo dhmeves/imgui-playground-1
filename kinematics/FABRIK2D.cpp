@@ -31,41 +31,6 @@
  // Defined epsilon value which is considered as 0
 #define EPSILON_VALUE 0.001
 
-// START - COMPLETELY DIFFERENT ALGORITHM HERE
-void Fabrik2D::calcP2()
-{
-    w[2] = tw - cos(GripperAngle) * l[3];
-    z[2] = tz - sin(GripperAngle) * l[3];
-    l12 = sqrt((w[2] * w[2]) + (z[2] * z[2]));
-}
-
-void Fabrik2D::calcP1()
-{
-    a12 = atan2(z[2], w[2]);
-    a[1] = acos(((l[1] * l[1]) + (l12 * l12) - (l[2] * l[2])) / (2 * l[1] * l12)) + a12;
-    w[1] = cos(a[1]) * l[1];
-    z[1] = sin(a[1]) * l[1];
-
-
-
-
-}
-
-//void Fabrik2D::calcP2()
-//{
-//    x[2] = tx - cos(GripperAngle) * l[3];
-//    y[2] = ty - sin(GripperAngle) * l[3];
-//    l12 = sqrt((x[2] * x[2]) + (y[2] * y[2]));
-//}
-//
-//void Fabrik2D::calcP1()
-//{
-//    a12 = atan2(y[2], x[2]);
-//    a[1] = acos(((l[1] * l[1]) + (l12 * l12) - (l[2] * l[2])) / (2 * l[1] * l12)) + a12;
-//    x[1] = cos(a[1]) * l[1];
-//    y[1] = sin(a[1]) * l[1];
-//}
-// END - COMPLETELY DIFFERENT ALGORITHM HERE
 Fabrik2D::Fabrik2D(int numJoints, int lengths[], float tolerance) {
     this->_numJoints = numJoints;
     _createChain(lengths);

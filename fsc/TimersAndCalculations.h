@@ -80,6 +80,7 @@ bool Timer(uint64_t& prevTime, uint64_t timeout, bool resetPrevTime, uint64_t cu
 double ConvertToFahrenheit(double celsius);
 float getMin(float arr[], size_t lenArray);
 float getMax(float arr[], size_t lenArray);
+float fsc_sqf(float input);
 
 
 const int polyCorners = 20;// how many corners the polygon has(no repeats)
