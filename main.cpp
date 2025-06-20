@@ -2844,11 +2844,15 @@ int main(int, char**)
                     ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
 
                     ImGuiIO& io = ImGui::GetIO();
-                    toolAngle += (5 * io.MouseWheel); // rotate 5 degrees per mouse scroll just for fun
                     static ImVec2 targetPosition = ImVec2(50.0f, -10.0f);
                     ImGui::Button("Tool Joystick");
                     if (ImGui::IsItemActive())
                     {
+                        toolAngle += (5 * io.MouseWheel); // rotate 5 degrees per mouse scroll just for fun
+                        if (toolAngle > 360)
+                            toolAngle -= 360;
+                        if (toolAngle < -360)
+                            toolAngle += 360;
                         ImGui::GetForegroundDrawList()->AddLine(io.MouseClickedPos[0], io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f); // Draw a line between the button and the mouse cursor
                         targetPosition = ImGui::GetMouseDragDelta(0, 0.0f);
                         targetPosition = ImVec2(targetPosition.x, -targetPosition.y); // invert y cause it's upside down in GUIs
@@ -2931,20 +2935,20 @@ int main(int, char**)
 
                     Fsciks::Arm arm;
 
-                    arm.joints[0].length = 0; // first joint is what we are considering the origin
+                    arm.joints[0].length = 0;
                     arm.joints[1].length = lengths[0];
                     arm.joints[2].length = lengths[1];
                     arm.joints[3].length = lengths[2];
 
-                    arm.joints[0].constraint.min_angle = -8.45; // all angle constraints are confirmed via solidworks
-                    arm.joints[0].constraint.max_angle = 50.73;
-                    arm.joints[1].constraint.min_angle = -56.45;
-                    arm.joints[1].constraint.max_angle = -131.64;
-                    arm.joints[2].constraint.min_angle = -35.14;
-                    arm.joints[2].constraint.max_angle = 92.03;
+                    arm.joints[0].angularConstraint.min_angle = -8.45; // all angle constraints are confirmed via solidworks
+                    arm.joints[0].angularConstraint.max_angle = 50.73;
+                    arm.joints[1].angularConstraint.min_angle = -56.45;
+                    arm.joints[1].angularConstraint.max_angle = -131.64;
+                    arm.joints[2].angularConstraint.min_angle = -35.14;
+                    arm.joints[2].angularConstraint.max_angle = 92.03;
 
-                    arm.joints[0].x = 0.0f;
-                    arm.joints[0].y = 0.0f;
+                    arm.joints[0].x = 0.0f; // first joint is what we are considering the origin
+                    arm.joints[0].y = 0.0f; // first joint is what we are considering the origin
 
                     arm.joints[3].x = targetPosition.x;
                     arm.joints[3].y = targetPosition.y;
@@ -3001,14 +3005,12 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        TaC.polyX[i] = boundsPolygon[i].x;
-                        TaC.polyY[i] = boundsPolygon[i].y;
+                        arm.goZone.x[i] = boundsPolygon[i].x;
+                        arm.goZone.y[i] = boundsPolygon[i].y;
                     }
-                    TaC.precalc_values(); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
+                    fsciks.precalcPolygonValues(arm.goZone); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    TaC.x = startPos.x + targetPosition.x;
-                    TaC.y = startPos.y - targetPosition.y;
-                    bool pointInBounds = TaC.pointInPolygon();
+                    bool pointInBounds = fsciks.pointInPolygon(arm.goZone, startPos.x + targetPosition.x, startPos.y - targetPosition.y);
 
                     ImVec4 colfInsideBounds = ImVec4(0.0f, 1.0f, 0.0f, 0.2f);
                     ImVec4 colfOutsideBounds = ImVec4(1.0f, 0.0f, 0.0f, 0.2f);
@@ -3078,16 +3080,17 @@ int main(int, char**)
                     complexPolygon[18] = startPos + ImVec2(0, 0);
                     complexPolygon[19] = startPos + ImVec2(0, 0);
 
+                    polygon_ts polygon1;
+                    polygon_ts polygon2;
+
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        TaC.polyX[i] = complexPolygon[i].x;
-                        TaC.polyY[i] = complexPolygon[i].y;
+                        polygon1.x[i] = complexPolygon[i].x;
+                        polygon1.y[i] = complexPolygon[i].y;
                     }
-                    TaC.precalc_values(); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
+                    fsciks.precalcPolygonValues(polygon1); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    TaC.x = ImGui::GetMousePos().x;
-                    TaC.y = ImGui::GetMousePos().y;
-                    bool pointInPolygon = TaC.pointInPolygon();
+                    bool pointInPolygon = fsciks.pointInPolygon(polygon1, ImGui::GetMousePos().x, ImGui::GetMousePos().y);
 
                     //ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
                     //pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
@@ -3119,14 +3122,12 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        TaC.polyX[i] = complexPolygon[i].x;
-                        TaC.polyY[i] = complexPolygon[i].y;
+                        polygon2.x[i] = complexPolygon[i].x;
+                        polygon2.y[i] = complexPolygon[i].y;
                     }
-                    TaC.precalc_values(); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
+                    fsciks.precalcPolygonValues(polygon2); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    TaC.x = ImGui::GetMousePos().x;
-                    TaC.y = ImGui::GetMousePos().y;
-                    pointInPolygon |= TaC.pointInPolygon();
+                    pointInPolygon |= fsciks.pointInPolygon(polygon2, ImGui::GetMousePos().x, ImGui::GetMousePos().y);
 
                     ImGui::Text("Cursor: %.0f/%.0f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
                     ImGui::Text("Cursor is %s shape", pointInPolygon ? "inside" : "outside");

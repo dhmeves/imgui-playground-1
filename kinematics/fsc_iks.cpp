@@ -27,6 +27,20 @@ IK_CONVERGENCE_E Fsciks::calcP1(Arm* arm)
     return CONVERGES;
 }
 
+IK_CONVERGENCE_E Fsciks::calcArm(Arm* arm)
+{
+    IK_CONVERGENCE_E p2Converges = calcP2(arm);
+    if (p2Converges)
+    {
+        calcP1(arm);
+    }
+    else
+    {
+        return CONVERGENCE_NOT_POSSIBLE;
+    }
+    return CONVERGES;
+}
+
 float Fsciks::getAngle(Arm arm, unsigned int joint)
 {
     if (joint > NUM_LINKS)
@@ -39,4 +53,35 @@ float Fsciks::getAngle(Arm arm, unsigned int joint)
     }
     return atan2(arm.joints[joint + 1].y - arm.joints[joint].y, arm.joints[joint + 1].x - arm.joints[joint].x)
         - atan2(arm.joints[joint].y - arm.joints[joint - 1].y, arm.joints[joint].x - arm.joints[joint - 1].x);
+}
+
+void Fsciks::precalcPolygonValues(polygon_ts polygon)
+{
+    int   i;
+    int j = NUM_POLYGON_CORNERS - 1;
+    for (i = 0; i < NUM_POLYGON_CORNERS; i++)
+    {
+        if (polygon.y[j] == polygon.y[i])
+        {
+            constant[i] = polygon.x[i];
+            multiple[i] = 0;
+        }
+        else
+        {
+            constant[i] = polygon.x[i] - (polygon.y[i] * polygon.x[j]) / (polygon.y[j] - polygon.y[i]) + (polygon.y[i] * polygon.x[i]) / (polygon.y[j] - polygon.y[i]);
+            multiple[i] = (polygon.x[j] - polygon.x[i]) / (polygon.y[j] - polygon.y[i]);
+        }
+        j = i;
+    }
+}
+
+bool Fsciks::pointInPolygon(polygon_ts polygon, float x, float y)
+{
+
+    bool oddNodes = false, current = polygon.y[NUM_POLYGON_CORNERS - 1] > y, previous;
+    for (int i = 0; i < NUM_POLYGON_CORNERS; i++)
+    {
+        previous = current; current = polygon.y[i] > y; if (current != previous) oddNodes ^= y * multiple[i] + constant[i] < x;
+    }
+    return oddNodes;
 }

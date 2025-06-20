@@ -83,7 +83,6 @@ float getMax(float arr[], size_t lenArray);
 float fsc_sqf(float input);
 
 
-const int polyCorners = 20;// how many corners the polygon has(no repeats)
 
 class TimersAndCalculations
 {
@@ -92,16 +91,6 @@ public:
     uint16_t BuildCrc16(char input[], uint8_t input_len);
     uint8_t BuildCrc8(char input[], uint8_t input_len);
     uint32_t TimeUntilTimer(uint32_t& startTime, uint32_t timeout, bool resetPrevTime, uint32_t current_time = 0, bool useFakeMillis = 0);
-    void precalc_values();
-    bool pointInPolygon();
-
-    float  polyX[polyCorners]; // horizontal coordinates of corners
-    float  polyY[polyCorners]; //  vertical coordinates of corners
-    float  x, y; // point to be tested
-
-    //The following global arrays should be allocated before calling these functions:
-    float  constant[polyCorners]; //storage for precalculated constants(same size as polyX)
-    float  multiple[polyCorners]; //storage for precalculated multipliers(same size as polyX)
 
 private:
 };

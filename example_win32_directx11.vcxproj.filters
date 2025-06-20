@@ -150,6 +150,9 @@
     <ClInclude Include="kinematics\FABRIK2D.h">
       <Filter>Header Files\kinematics</Filter>
     </ClInclude>
+    <ClInclude Include="kinematics\fsc_iks.h">
+      <Filter>Header Files\kinematics</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -213,6 +216,9 @@
       <Filter>Source Files\NativeFileDialog</Filter>
     </ClCompile>
     <ClCompile Include="kinematics\FABRIK2D.cpp">
+      <Filter>Source Files\kinematics</Filter>
+    </ClCompile>
+    <ClCompile Include="kinematics\fsc_iks.cpp">
       <Filter>Source Files\kinematics</Filter>
     </ClCompile>
   </ItemGroup>
