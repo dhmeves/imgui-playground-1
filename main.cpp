@@ -1559,6 +1559,9 @@ int main(int, char**)
 
     // Main loop
     bool done = false;
+    Fsciks_dan * danIK = new Fsciks_dan();
+    danIK->initializeIK();
+    FSCIKS_OUTPUT fsciks_test;
     while (!done)
     {
         const uint32_t NUM_RATES = 1000;
@@ -2899,7 +2902,7 @@ int main(int, char**)
                     //    * 2 if FABRIK converged with a higher tolerance value
                     
 
-
+                    fsciks_test = danIK->computeIK();
 
                     ImVec2 startPos = ImGui::GetCursorScreenPos();
                     ImVec2 windowSize;
@@ -2917,7 +2920,8 @@ int main(int, char**)
                         toolSetpointX.max_acceleration = 25;
                         toolSetpointX.last_update = 0;
                     }
-                    toolSetpointX.target_value = targetPosition.x;
+                    //toolSetpointX.target_value = targetPosition.x;
+                    toolSetpointX.target_value = fsciks_test.xOut.x;
                     update_motion(&toolSetpointX);
                     toolSetpointX.last_update = toolSetpointX.current_value;
 
@@ -2930,7 +2934,8 @@ int main(int, char**)
                         toolSetpointY.max_acceleration = 25;
                         toolSetpointY.last_update = 0;
                     }
-                    toolSetpointY.target_value = targetPosition.y;
+                    //toolSetpointY.target_value = targetPosition.y;
+                    toolSetpointY.target_value = fsciks_test.xOut.y;
                     update_motion(&toolSetpointY);
                     toolSetpointY.last_update = toolSetpointY.current_value;
 
@@ -2951,10 +2956,15 @@ int main(int, char**)
                     arm.joints[0].x = 0.0f; // first joint is what we are considering the origin
                     arm.joints[0].y = 0.0f; // first joint is what we are considering the origin
 
-                    arm.joints[3].x = targetPosition.x;
-                    arm.joints[3].y = targetPosition.y;
+                    //arm.joints[3].x = targetPosition.x;
+                    //arm.joints[3].y = targetPosition.y;
 
-                    arm.gripperAngle = toolAngle / RAD_TO_DEG;
+                    arm.joints[3].x = fsciks_test.xOut.x;
+                    arm.joints[3].y = fsciks_test.xOut.y;
+
+                    //arm.gripperAngle = toolAngle / RAD_TO_DEG;
+
+                    arm.gripperAngle = fsciks_test.polarOut.betaYaw / RAD_TO_DEG;
 
                     fsciks.fsciks_init(&arm);
                     IK_CONVERGENCE_E p2Converges = fsciks.calcP2(&arm);

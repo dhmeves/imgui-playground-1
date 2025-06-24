@@ -52,6 +52,14 @@ struct Polar_Coordinates
     float betaYaw;      // phi angle
 };
 
+struct FSCIKS_OUTPUT
+{
+    Point xOut;
+    Point yOut;
+    Point zOut;
+    Polar_Coordinates polarOut;
+};
+
 class Fsciks_dan
 {
 public:
@@ -116,7 +124,7 @@ public:
       Quaternion q2SolViaJacobianAndConjugate(Quaternion* q1, Jacobian* jac);
       Polar_Coordinates accumulate(Linkage* link, LINK_DIRECTION_e dir, float bRoll, float bPitch, float bYaw, uint16_t prev_hyp);
       void initializeIK(void);
-      void computeIK(void);
+      FSCIKS_OUTPUT computeIK(void);
       Polar_Coordinates quaternionToPolar(Quaternion* q);
       float normalizedQuaternion(Quaternion* q);
 };

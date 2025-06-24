@@ -17,13 +17,13 @@ void Fsciks_dan::initLinkage(Linkage * link, Linkage * prev_link, Linkage * next
   unitQ.y = 0.0f;
   unitQ.z = 0.0f;
 
-  Quaternion * newQ;
+  Quaternion * newQ = new Quaternion;
   newQ->w = 0.0f;
   newQ->x = 0.0f;
   newQ->y = 0.0f;
   newQ->z = 0.0f;
 
-  THREE_DOF_ROT * initAng;
+  THREE_DOF_ROT * initAng = new THREE_DOF_ROT;
   initAng->roll = 0.0f;
   initAng->pitch = 0.0f;
   initAng->yaw = 0.0f;
@@ -55,7 +55,7 @@ void Fsciks_dan::updateLinkageQuaternion(Linkage * link, Quaternion * newQ)
 
 void Fsciks_dan::computeLinkageAngles(Linkage * link) // compute and store in linkage struct
 {
-  computeIMUAngles(link->q, &link->angles.roll, &link->angles.pitch, &link->angles.yaw);
+  //computeIMUAngles(link->q, &link->angles.roll, &link->angles.pitch, &link->angles.yaw);
   return;
 }
 
@@ -234,7 +234,7 @@ Point Fsciks_dan::getEffectorPosition(Polar_Coordinates polar3d) // Works best w
 
 Jacobian Fsciks_dan::constructJacobian(Quaternion qNaut, Quaternion qOne) // partial differentals
 {
-  Jacobian * jac;
+  Jacobian * jac = new Jacobian;
   jac->delWnaut = qNaut.w - qOne.w;
   jac->delWone = qOne.w - qNaut.w;
   jac->delXnaut = qNaut.x - qOne.x;
@@ -359,9 +359,9 @@ void Fsciks_dan::initializeIK(void) // init function - set up for Feller Buncher
   updateLinkageLength(&fellBunch.arm, 36);
   updateLinkageLength(&fellBunch.grabber, 12);
 
-  updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
-  updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
-  updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
+  //updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
+  //updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
+  //updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
 
   updateLinkageOrigin(&fellBunch.boom, &og);
   updateLinkageOrigin(&fellBunch.arm, &fellBunch.boom.q);
@@ -374,19 +374,20 @@ void Fsciks_dan::initializeIK(void) // init function - set up for Feller Buncher
   return;
 }
 
-void Fsciks_dan::computeIK(void) // loop function - do business logic here
+FSCIKS_OUTPUT Fsciks_dan::computeIK(void) // loop function - do business logic here
 {
-  updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
-  updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
-  updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
+  FSCIKS_OUTPUT out;
+  //updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
+  //updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
+  //updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
 
   updateLinkageOrigin(&fellBunch.boom, &og);
   updateLinkageOrigin(&fellBunch.arm, &fellBunch.boom.q);
   updateLinkageOrigin(&fellBunch.grabber, &fellBunch.arm.q);
 
-  Quaternion futureBoomQ; // desired rotation
-  Quaternion futureArmQ;
-  Quaternion futureGrabberQ;
+  Quaternion futureBoomQ = rotationAroundX(M_PI / 8);; // desired rotation
+  Quaternion futureArmQ = rotationAroundY(M_PI / 2);;
+  Quaternion futureGrabberQ = rotationAroundZ(M_PI / 4);;
 
   Jacobian jacBoom = constructJacobian(futureBoomQ, fellBunch.boom.q);
   Jacobian jacArm = constructJacobian(futureArmQ, fellBunch.arm.q);
@@ -404,7 +405,7 @@ void Fsciks_dan::computeIK(void) // loop function - do business logic here
   Polar_Coordinates endEffectorLocation = accumulate(&fellBunch.grabber, backward, 0.0f, 0.0f, 0.0f, 0);
   Point cart = getEffectorPosition(endEffectorLocation);
 
-  Quaternion rotX = rotationAroundX(M_PI); // in radians
+  Quaternion rotX = rotationAroundX(M_PI / 8); // in radians
   Quaternion rotY = rotationAroundY(M_PI / 2); // in radians
   Quaternion rotZ = rotationAroundZ(M_PI / 4); // in radians
 
@@ -434,7 +435,12 @@ void Fsciks_dan::computeIK(void) // loop function - do business logic here
   endEffectorLocation = accumulate(&fellBunch.grabber, backward, 0.0f, 0.0f, 0.0f, 0);
   cart = getEffectorPosition(endEffectorLocation);
 
-  return;
+  out.polarOut = endEffectorLocation;
+  out.xOut = cart;
+  out.yOut = cartY;
+  out.zOut = cartZ;
+
+  return out;
 }
 
 Polar_Coordinates Fsciks_dan::quaternionToPolar(Quaternion * q) // quick polar check
