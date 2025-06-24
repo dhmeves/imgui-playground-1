@@ -172,6 +172,7 @@
     <ClInclude Include="json\json\json.h" />
     <ClInclude Include="kalman\kalman.h" />
     <ClInclude Include="kinematics\FABRIK2D.h" />
+    <ClInclude Include="kinematics\fsciks_dan.h" />
     <ClInclude Include="kinematics\fsc_iks.h" />
     <ClInclude Include="NativeFileDialog\nfd.h" />
     <ClInclude Include="NativeFileDialog\nfd_common.h" />
@@ -197,6 +198,7 @@
     <ClCompile Include="json\jsoncpp.cpp" />
     <ClCompile Include="kalman\kalman.cpp" />
     <ClCompile Include="kinematics\FABRIK2D.cpp" />
+    <ClCompile Include="kinematics\fsciks_dan.cpp" />
     <ClCompile Include="kinematics\fsc_iks.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="NativeFileDialog\nfd_common.c" />

@@ -17,6 +17,7 @@
 #include "kalman.h"
 #include "FABRIK2D.h"
 #include "fsc_iks.h"
+#include "fsciks_dan.h"
 #include "sudoku.h"
 
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
