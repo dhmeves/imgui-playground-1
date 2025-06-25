@@ -30,7 +30,7 @@ IK_CONVERGENCE_E Fsciks::calcP1(Arm* arm)
 IK_CONVERGENCE_E Fsciks::calcArm(Arm* arm)
 {
     IK_CONVERGENCE_E p2Converges = calcP2(arm);
-    if (p2Converges)
+    if (p2Converges == CONVERGES)
     {
         calcP1(arm);
     }
@@ -61,27 +61,73 @@ void Fsciks::precalcPolygonValues(polygon_ts polygon)
     int j = NUM_POLYGON_CORNERS - 1;
     for (i = 0; i < NUM_POLYGON_CORNERS; i++)
     {
-        if (polygon.y[j] == polygon.y[i])
+        if (polygon.pnt[j].y == polygon.pnt[i].y)
         {
-            constant[i] = polygon.x[i];
+            constant[i] = polygon.pnt[i].x;
             multiple[i] = 0;
         }
         else
         {
-            constant[i] = polygon.x[i] - (polygon.y[i] * polygon.x[j]) / (polygon.y[j] - polygon.y[i]) + (polygon.y[i] * polygon.x[i]) / (polygon.y[j] - polygon.y[i]);
-            multiple[i] = (polygon.x[j] - polygon.x[i]) / (polygon.y[j] - polygon.y[i]);
+            constant[i] = polygon.pnt[i].x - (polygon.pnt[i].y * polygon.pnt[j].x) / (polygon.pnt[j].y - polygon.pnt[i].y) + (polygon.pnt[i].y * polygon.pnt[i].x) / (polygon.pnt[j].y - polygon.pnt[i].y);
+            multiple[i] = (polygon.pnt[j].x - polygon.pnt[i].x) / (polygon.pnt[j].y - polygon.pnt[i].y);
         }
         j = i;
     }
 }
 
-bool Fsciks::pointInPolygon(polygon_ts polygon, float x, float y)
+// returns whether point is inside a "simple" enclosed polygon (concave or convex, no holes or segments crossing)
+bool Fsciks::pointInPolygon(point_ts point, polygon_ts polygon, int num_points)
 {
 
-    bool oddNodes = false, current = polygon.y[NUM_POLYGON_CORNERS - 1] > y, previous;
-    for (int i = 0; i < NUM_POLYGON_CORNERS; i++)
+    bool oddNodes = false, current = polygon.pnt[num_points - 1].y > point.y, previous;
+    for (int i = 0; i < num_points; i++)
     {
-        previous = current; current = polygon.y[i] > y; if (current != previous) oddNodes ^= y * multiple[i] + constant[i] < x;
+        previous = current; current = polygon.pnt[i].y > point.y; if (current != previous) oddNodes ^= point.y * multiple[i] + constant[i] < point.x;
     }
     return oddNodes;
+}
+
+// Squared distance between two points
+double Fsciks::dist2(point_ts a, point_ts b)
+{
+    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+}
+
+// Minimum distance from point to segment [a, b]
+double Fsciks::distPointToSegment(point_ts point, point_ts a, point_ts b)
+{
+    double l2 = dist2(a, b);
+    if (l2 == 0.0) return sqrt(dist2(point, a)); // a == b
+
+    // Project point onto segment, then clamp t to [0,1]
+    double t = ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / l2;
+    if (t < 0.0)
+        return sqrt(dist2(point, a));
+    else if (t > 1.0)
+        return sqrt(dist2(point, b));
+
+    point_ts projection = {
+        a.x + t * (b.x - a.x),
+        a.y + t * (b.y - a.y)
+    };
+    return sqrt(dist2(point, projection));
+}
+
+// Distance from point to arbitrary "simple" polygon (concave or convex, no holes or segments crossing)
+// Yes, this can be quite cpu-intensive if the polygon has many points.... no I don't feel like making it more
+// efficient....so just be careful. 
+double Fsciks::distPointToPolygon(point_ts point, polygon_ts polygon, int num_points)
+{
+    double min_dist = DBL_MAX;
+    for (int i = 0; i < num_points; ++i) {
+        point_ts a = polygon.pnt[i];
+        point_ts b = polygon.pnt[(i + 1) % num_points];
+        double d = distPointToSegment(point, a, b);
+        if (d < min_dist) min_dist = d;
+    }
+    if (pointInPolygon(point, polygon, num_points))
+    {
+        return -min_dist; // return a negative number if inside the polygon
+    }
+    return min_dist;
 }

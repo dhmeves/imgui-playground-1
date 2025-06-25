@@ -2831,19 +2831,19 @@ int main(int, char**)
                 ImGui::SetNextWindowSize(ImVec2(500, 750), ImGuiCond_Appearing);
                 ImGui::Begin("Kinematics", &show_kinematics_toggle_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
-                    Fabrik2D::AngularConstraint angularConstraints[3];
-                    angularConstraints[0].min_angle = -360 / RAD_TO_DEG;// -90 / RAD_TO_DEG;
-                    angularConstraints[0].max_angle = 360 / RAD_TO_DEG;//90 / RAD_TO_DEG;
-                    angularConstraints[1].min_angle = -360 / RAD_TO_DEG;
-                    angularConstraints[1].max_angle = 360 / RAD_TO_DEG;
-                    angularConstraints[2].min_angle = 2.0 * -PI;// -90 / RAD_TO_DEG;
-                    angularConstraints[2].max_angle = 2.0 * PI;// 90 / RAD_TO_DEG;
-                    fabrik2D.SetAngularConstraints(angularConstraints);
-                    fabrik2D.setTolerance(0.5f);
+                    //Fabrik2D::AngularConstraint angularConstraints[3];
+                    //angularConstraints[0].min_angle = -360 / RAD_TO_DEG;// -90 / RAD_TO_DEG;
+                    //angularConstraints[0].max_angle = 360 / RAD_TO_DEG;//90 / RAD_TO_DEG;
+                    //angularConstraints[1].min_angle = -360 / RAD_TO_DEG;
+                    //angularConstraints[1].max_angle = 360 / RAD_TO_DEG;
+                    //angularConstraints[2].min_angle = 2.0 * -PI;// -90 / RAD_TO_DEG;
+                    //angularConstraints[2].max_angle = 2.0 * PI;// 90 / RAD_TO_DEG;
+                    //fabrik2D.SetAngularConstraints(angularConstraints);
+                    //fabrik2D.setTolerance(0.5f);
                     ImDrawList* draw_list = ImGui::GetWindowDrawList();
                     static float thickness = 2.0f;
                     static float toolAngle;
-                    ImGui::SliderFloat("tool angle Kinematics", &toolAngle, 0, 360);
+                    ImGui::SliderFloat("tool angle", &toolAngle, 0, 360);
 
                     ImGuiIO& io = ImGui::GetIO();
                     static ImVec2 targetPosition = ImVec2(50.0f, -10.0f);
@@ -2958,11 +2958,12 @@ int main(int, char**)
                     arm.gripperAngle = toolAngle / RAD_TO_DEG;
 
                     fsciks.fsciks_init(&arm);
-                    IK_CONVERGENCE_E p2Converges = fsciks.calcP2(&arm);
-                    IK_CONVERGENCE_E p1Converges = fsciks.calcP1(&arm);
+                    //IK_CONVERGENCE_E p1Converges = fsciks.calcP2(&arm);
+                    //IK_CONVERGENCE_E p1Converges = fsciks.calcP1(&arm);
+                    IK_CONVERGENCE_E p1Converges = fsciks.calcArm(&arm);
 
                     std::string ikReturnText = "";
-                    switch (p2Converges)
+                    switch (p1Converges)
                     {
                     case CONVERGES:
                         ikReturnText = "Could converge";
@@ -3007,12 +3008,13 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        arm.goZone.x[i] = boundsPolygon[i].x;
-                        arm.goZone.y[i] = boundsPolygon[i].y;
+                        arm.goZone.pnt[i].x = boundsPolygon[i].x;
+                        arm.goZone.pnt[i].y = boundsPolygon[i].y;
                     }
                     fsciks.precalcPolygonValues(arm.goZone); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    bool pointInBounds = fsciks.pointInPolygon(arm.goZone, startPos.x + targetPosition.x, startPos.y - targetPosition.y);
+                    point_ts offsetTargetPos = point_ts(startPos.x + targetPosition.x, startPos.y - targetPosition.y);
+                    bool pointInBounds = fsciks.pointInPolygon(offsetTargetPos, arm.goZone, numPoints_polygon);
 
                     ImVec4 colfInsideBounds = ImVec4(0.0f, 1.0f, 0.0f, 0.2f);
                     ImVec4 colfOutsideBounds = ImVec4(1.0f, 0.0f, 0.0f, 0.2f);
@@ -3087,13 +3089,15 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        polygon1.x[i] = complexPolygon[i].x;
-                        polygon1.y[i] = complexPolygon[i].y;
+                        polygon1.pnt[i].x = complexPolygon[i].x;
+                        polygon1.pnt[i].y = complexPolygon[i].y;
                     }
                     fsciks.precalcPolygonValues(polygon1); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    bool pointInPolygon = fsciks.pointInPolygon(polygon1, ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                    point_ts mousePos = point_ts(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
 
+                    bool pointInPolygon1 = fsciks.pointInPolygon(mousePos, polygon1, numPoints_polygon);
+                    float distanceToPolygon1 = fsciks.distPointToPolygon(mousePos, polygon1, numPoints_polygon);
                     //ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
                     //pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
 
@@ -3124,15 +3128,19 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        polygon2.x[i] = complexPolygon[i].x;
-                        polygon2.y[i] = complexPolygon[i].y;
+                        polygon2.pnt[i].x = complexPolygon[i].x;
+                        polygon2.pnt[i].y = complexPolygon[i].y;
                     }
                     fsciks.precalcPolygonValues(polygon2); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    pointInPolygon |= fsciks.pointInPolygon(polygon2, ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                    bool pointInPolygon2 = fsciks.pointInPolygon(mousePos, polygon2, numPoints_polygon);
+                    float distanceToPolygon2 = fsciks.distPointToPolygon(mousePos, polygon2, numPoints_polygon);
 
-                    ImGui::Text("Cursor: %.0f/%.0f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-                    ImGui::Text("Cursor is %s shape", pointInPolygon ? "inside" : "outside");
+                    ImGui::Text("Cursor: %.0f/%.0f", mousePos.x, mousePos.y);
+                    ImGui::Text("Distance to Polygon1: %.0f", distanceToPolygon1);
+                    ImGui::Text("Distance to Polygon2: %.0f", distanceToPolygon2);
+                    ImGui::Text("Cursor is %s Polygon1", pointInPolygon1 ? "inside" : "outside");
+                    ImGui::Text("Cursor is %s Polygon2", pointInPolygon2 ? "inside" : "outside");
 
                     draw_list->AddConcavePolyFilled(complexPolygon, numPoints_polygon, col);
                 }

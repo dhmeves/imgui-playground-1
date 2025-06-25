@@ -20,10 +20,15 @@ typedef struct FSCIKS_T
 {
 } fsciks_ts;
 
+typedef struct point_ts
+{
+    float x;
+    float y;
+};
+
 typedef struct polygon_ts
 {
-    float x[NUM_POLYGON_CORNERS];
-    float y[NUM_POLYGON_CORNERS];
+    point_ts pnt[NUM_POLYGON_CORNERS];
 };
 
 const int NUM_LINKS = 3;
@@ -71,8 +76,11 @@ public:
     float getAngle(Arm arm, unsigned int joint);
 
     void precalcPolygonValues(polygon_ts polygon);
-    bool pointInPolygon(polygon_ts polygon, float x, float y);
+    bool pointInPolygon(point_ts point, polygon_ts polygon, int num_points);
 
+    double dist2(point_ts a, point_ts b);
+    double distPointToSegment(point_ts point, point_ts a, point_ts b);
+    double distPointToPolygon(point_ts point, polygon_ts polygon, int num_points);
 
 private:
     float  constant[NUM_POLYGON_CORNERS]; //storage for precalculated constants
