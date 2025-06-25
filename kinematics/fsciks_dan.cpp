@@ -55,7 +55,7 @@ void Fsciks_dan::updateLinkageQuaternion(Linkage * link, Quaternion * newQ)
 
 void Fsciks_dan::computeLinkageAngles(Linkage * link) // compute and store in linkage struct
 {
-  computeIMUAngles(link->q, &link->angles.roll, &link->angles.pitch, &link->angles.yaw);
+  //computeIMUAngles(link->q, &link->angles.roll, &link->angles.pitch, &link->angles.yaw);
   return;
 }
 
@@ -359,9 +359,9 @@ void Fsciks_dan::initializeIK(void) // init function - set up for Feller Buncher
   updateLinkageLength(&fellBunch.arm, 36);
   updateLinkageLength(&fellBunch.grabber, 12);
 
-  updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
-  updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
-  updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
+  //updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
+  //updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
+  //updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
 
   updateLinkageOrigin(&fellBunch.boom, &og);
   updateLinkageOrigin(&fellBunch.arm, &fellBunch.boom.q);
@@ -376,9 +376,9 @@ void Fsciks_dan::initializeIK(void) // init function - set up for Feller Buncher
 
 void Fsciks_dan::computeIK(void) // loop function - do business logic here
 {
-  updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
-  updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
-  updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
+  //updateIMU(&fellBunch.boom.q, 0, 0, 0, 0, 0, 0, 0); // MM7 values
+  //updateIMU(&fellBunch.arm.q, 0, 0, 0, 0, 0, 0, 0);
+  //updateIMU(&fellBunch.grabber.q, 0, 0, 0, 0, 0, 0, 0);
 
   updateLinkageOrigin(&fellBunch.boom, &og);
   updateLinkageOrigin(&fellBunch.arm, &fellBunch.boom.q);

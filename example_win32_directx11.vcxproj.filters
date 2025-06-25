@@ -73,6 +73,12 @@
     <Filter Include="Source Files\kinematics">
       <UniqueIdentifier>{3a63a34a-46c8-417e-87d5-78411b1111d7}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\srvlib">
+      <UniqueIdentifier>{aaca18b1-efd2-4ab1-b1fe-9bde463707ab}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\srvlib">
+      <UniqueIdentifier>{d7a85d90-6345-4409-8e67-8359c41a2a27}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">

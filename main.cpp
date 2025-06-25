@@ -17,7 +17,7 @@
 #include "kalman.h"
 #include "FABRIK2D.h"
 #include "fsc_iks.h"
-#include "fsciks_dan.h"
+//#include "fsciks_dan.h"
 #include "sudoku.h"
 
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
@@ -27,6 +27,7 @@
 
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
+
 
 #define uint64 uint64_t
 #define sint64 int64_t
