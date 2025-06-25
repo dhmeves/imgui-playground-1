@@ -2949,21 +2949,21 @@ int main(int, char**)
                     arm.joints[2].angularConstraint.min_angle = -35.14;
                     arm.joints[2].angularConstraint.max_angle = 92.03;
 
-                    arm.joints[0].x = 0.0f; // first joint is what we are considering the origin
-                    arm.joints[0].y = 0.0f; // first joint is what we are considering the origin
+                    arm.joints[0].point.x = 0.0f; // first joint is what we are considering the origin
+                    arm.joints[0].point.y = 0.0f; // first joint is what we are considering the origin
 
-                    arm.joints[3].x = targetPosition.x;
-                    arm.joints[3].y = targetPosition.y;
+                    arm.target.x = targetPosition.x;
+                    arm.target.y = targetPosition.y;
 
                     arm.gripperAngle = toolAngle / RAD_TO_DEG;
 
                     fsciks.fsciks_init(&arm);
                     //IK_CONVERGENCE_E p1Converges = fsciks.calcP2(&arm);
                     //IK_CONVERGENCE_E p1Converges = fsciks.calcP1(&arm);
-                    IK_CONVERGENCE_E p1Converges = fsciks.calcArm(&arm);
+                    IK_CONVERGENCE_E pConverges = fsciks.calcArm(&arm);
 
                     std::string ikReturnText = "";
-                    switch (p1Converges)
+                    switch (pConverges)
                     {
                     case CONVERGES:
                         ikReturnText = "Could converge";
@@ -2978,9 +2978,9 @@ int main(int, char**)
                     ImU32 colArm = ImColor(colf);
                     ImVec4 colf2 = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
                     ImU32 colGripper = ImColor(colf2);
-                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[0].x, startPos.y - arm.joints[0].y), ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), colArm, thickness);
-                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[1].x, startPos.y - arm.joints[1].y), ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), colArm, thickness);
-                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[2].x, startPos.y - arm.joints[2].y), ImVec2(startPos.x + arm.joints[3].x, startPos.y - arm.joints[3].y), colGripper, thickness);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[0].point.x, startPos.y - arm.joints[0].point.y), ImVec2(startPos.x + arm.joints[1].point.x, startPos.y - arm.joints[1].point.y), colArm, thickness);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[1].point.x, startPos.y - arm.joints[1].point.y), ImVec2(startPos.x + arm.joints[2].point.x, startPos.y - arm.joints[2].point.y), colArm, thickness);
+                    draw_list->AddLine(ImVec2(startPos.x + arm.joints[2].point.x, startPos.y - arm.joints[2].point.y), ImVec2(startPos.x + arm.joints[3].point.x, startPos.y - arm.joints[3].point.y), colGripper, thickness);
 
                     const int numPoints_polygon = 20;
                     ImVec2 boundsPolygon[numPoints_polygon];
@@ -3013,8 +3013,14 @@ int main(int, char**)
                     }
                     fsciks.precalcPolygonValues(arm.goZone); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    point_ts offsetTargetPos = point_ts(startPos.x + targetPosition.x, startPos.y - targetPosition.y);
-                    bool pointInBounds = fsciks.pointInPolygon(offsetTargetPos, arm.goZone, numPoints_polygon);
+                    point_ts offsetTargetPos = point_ts(startPos.x + arm.joints[3].point.x, startPos.y - arm.joints[3].point.y);
+
+                    bool pointInBounds = false;
+                    float distanceToPolygon1 = fsciks.distPointToPolygon(offsetTargetPos, arm.goZone, numPoints_polygon);
+                    if (distanceToPolygon1 < 0.0f)
+                    {
+                        pointInBounds = true;
+                    }
 
                     ImVec4 colfInsideBounds = ImVec4(0.0f, 1.0f, 0.0f, 0.2f);
                     ImVec4 colfOutsideBounds = ImVec4(1.0f, 0.0f, 0.0f, 0.2f);
@@ -3029,15 +3035,16 @@ int main(int, char**)
                     ImGui::Text("angle1: %.2f°", fsciks.getAngle(arm, 1) * RAD_TO_DEG);
                     ImGui::SameLine();
                     ImGui::Text("angle2: %.2f°", fsciks.getAngle(arm, 2) * RAD_TO_DEG);
-                    ImGui::Text("POS0: %.2f/%.2f", arm.joints[0].x, arm.joints[0].y);
+                    ImGui::Text("POS0: %.2f/%.2f", arm.joints[0].point.x, arm.joints[0].point.y);
                     ImGui::SameLine();
-                    ImGui::Text("POS1: %.2f/%.2f", arm.joints[1].x, arm.joints[1].y);
+                    ImGui::Text("POS1: %.2f/%.2f", arm.joints[1].point.x, arm.joints[1].point.y);
                     ImGui::SameLine();
-                    ImGui::Text("POS2: %.2f/%.2f", arm.joints[2].x, arm.joints[2].y);
+                    ImGui::Text("POS2: %.2f/%.2f", arm.joints[2].point.x, arm.joints[2].point.y);
                     ImGui::SameLine();
-                    ImGui::Text("POS3: %.2f/%.2f", arm.joints[3].x, arm.joints[3].y);
+                    ImGui::Text("POS3: %.2f/%.2f", arm.joints[3].point.x, arm.joints[3].point.y);
 
                     ImGui::Text("End-effector joint is %s shape", pointInBounds ? "inside" : "outside");
+                    ImGui::Text("End-effector is %.0f units away from the closest edge", distanceToPolygon1);
                 }
                 ImGui::End();
             }
@@ -3096,8 +3103,12 @@ int main(int, char**)
 
                     point_ts mousePos = point_ts(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
 
-                    bool pointInPolygon1 = fsciks.pointInPolygon(mousePos, polygon1, numPoints_polygon);
+                    bool pointInPolygon1 = false;
                     float distanceToPolygon1 = fsciks.distPointToPolygon(mousePos, polygon1, numPoints_polygon);
+                    if (distanceToPolygon1 < 0) // if distance is negative, that means we're inside the polygon
+                    {
+                        pointInPolygon1 = true;
+                    }
                     //ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
                     //pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
 
@@ -3133,8 +3144,12 @@ int main(int, char**)
                     }
                     fsciks.precalcPolygonValues(polygon2); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    bool pointInPolygon2 = fsciks.pointInPolygon(mousePos, polygon2, numPoints_polygon);
+                    bool pointInPolygon2 = false;
                     float distanceToPolygon2 = fsciks.distPointToPolygon(mousePos, polygon2, numPoints_polygon);
+                    if (distanceToPolygon2 < 0) // if distance is negative, that means we're inside the polygon
+                    {
+                        pointInPolygon2 = true;
+                    }
 
                     ImGui::Text("Cursor: %.0f/%.0f", mousePos.x, mousePos.y);
                     ImGui::Text("Distance to Polygon1: %.0f", distanceToPolygon1);

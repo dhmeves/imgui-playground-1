@@ -53,8 +53,7 @@ public:
 
         float r; // polar coordinates
         float theta; // polar coordinates
-        float x; // cartesian coordiantes
-        float y; // cartesian coordiantes
+        point_ts point;
         float angle; /// angle of joint relative to parent arm in degrees
         angularConstraint_ts angularConstraint;/// The angular constraint of the joint
     };
@@ -63,8 +62,8 @@ public:
     {
         Joint joints[NUM_LINKS + 1];
         float gripperAngle;
-        float prevTargetX;
-        float prevTargetY;
+        point_ts prevTarget;
+        point_ts target;
         polygon_ts goZone; // Polygon where arm is allowed to go
     };
 
@@ -78,9 +77,9 @@ public:
     void precalcPolygonValues(polygon_ts polygon);
     bool pointInPolygon(point_ts point, polygon_ts polygon, int num_points);
 
-    double dist2(point_ts a, point_ts b);
-    double distPointToSegment(point_ts point, point_ts a, point_ts b);
-    double distPointToPolygon(point_ts point, polygon_ts polygon, int num_points);
+    float dist2(point_ts a, point_ts b);
+    float distPointToSegment(point_ts point, point_ts a, point_ts b);
+    float distPointToPolygon(point_ts point, polygon_ts polygon, int num_points);
 
 private:
     float  constant[NUM_POLYGON_CORNERS]; //storage for precalculated constants
