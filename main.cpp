@@ -17,7 +17,7 @@
 #include "kalman.h"
 #include "FABRIK2D.h"
 #include "fsc_iks.h"
-#include "fsciks_dan.h"
+//#include "fsciks_dan.h"
 #include "sudoku.h"
 
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
@@ -3456,6 +3456,8 @@ int main(int, char**)
                 ImGui::Text("prevIncrementTime: %d", prevIncrementTime);
                 ImGui::Text("partialIncrementTime: %d", partialIncrementTime);
                 ImGui::Text("actualOperatingHours: %d", actualOperatingHours);
+                float testFloat = 1.23f;
+                ImGui::Text("float: %f, (uint64)float: %f", testFloat, (uint64_t)testFloat);
                 ImGui::End();
             }
 
@@ -3619,11 +3621,36 @@ int main(int, char**)
                         static float minOut = 0;
                         static float maxOut = 0;
                         static bool clipOutput = 0;
-                        ImGui::SliderFloat("input", &input, -100, 100, "%3f", ImGuiSliderFlags_None);
-                        ImGui::SliderFloat("minIn", &minIn, -100, 100, "%3f", ImGuiSliderFlags_None);
-                        ImGui::SliderFloat("maxIn", &maxIn, -100, 100, "%3f", ImGuiSliderFlags_None);
-                        ImGui::SliderFloat("minOut", &minOut, -100, 100, "%3f", ImGuiSliderFlags_None);
-                        ImGui::SliderFloat("maxOut", &maxOut, -100, 100, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("input", &input, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("minIn", &minIn, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("maxIn", &maxIn, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("minOut", &minOut, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("maxOut", &maxOut, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::Checkbox("clipOutput", &clipOutput);
+                        double output = scale(input, minIn, maxIn, minOut, maxOut, clipOutput);
+                        ImGui::Text("output: %f", output);
+                    }
+                    ImGui::End();
+                }
+
+                static bool show_scale2_window = true;
+                // 3. Show a CAN endianess playground window
+                if (show_scale2_window)
+                {
+                    ImGui::SetNextWindowSize(ImVec2(500, 400), ImGuiCond_Appearing);
+                    ImGui::Begin("Scale2", &show_scale2_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                    {
+                        static float input = 0;
+                        static float minIn = 0;
+                        static float maxIn = 0;
+                        static float minOut = 0;
+                        static float maxOut = 0;
+                        static bool clipOutput = 0;
+                        ImGui::SliderFloat("input", &input, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("minIn", &minIn, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("maxIn", &maxIn, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("minOut", &minOut, -10000, 10000, "%3f", ImGuiSliderFlags_None);
+                        ImGui::SliderFloat("maxOut", &maxOut, -10000, 10000, "%3f", ImGuiSliderFlags_None);
                         ImGui::Checkbox("clipOutput", &clipOutput);
                         double output = scale(input, minIn, maxIn, minOut, maxOut, clipOutput);
                         ImGui::Text("output: %f", output);
