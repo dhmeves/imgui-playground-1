@@ -1370,6 +1370,7 @@ typedef struct
 
 } rampedOutput_ts;
 
+
 #define COIL_CURRENT_0_MA 0
 
 #define MIN_SINT8_SETPNT -127//(int8_t)-127
@@ -1466,6 +1467,173 @@ void RampedOutput(rampedOutput_ts* rampedVals)
     // canDebugBuf6[3] = rampedVals->finishedRamp;3
 
     rampedVals->prevSetpoint = rampedVals->setpoint; // make sure to update prevSetpoint
+}
+
+
+typedef struct
+{
+    // INPUTS
+    float inputVal;
+    float outputMin;
+    float outputMax;
+    bool inNeutral;
+    float maxVelocity;
+    float maxAccel;
+    float maxDecel;
+    float maxJerk;
+    float dt;
+    bool limitVelocity;
+    bool limitAccel;
+    bool limitJerk;
+
+    float posMin;
+    float posMax;
+    float negMin;
+    float negMax;
+    float rampStartTime;
+    float rampStopTime;
+    float deadband;
+    //float controlModeMult;
+
+    // PRIVATE/INTERNAL
+    float setpoint;        // calculated setpoint (ramped)
+    float currentSetpoint; // calculated end-of-ramp setpoint
+    float prevSetpoint;    // setpoint from previous loop
+    float prevPrevSetpoint; // setpoint from 2 loops ago
+    uint64_t prevTime;
+    bool finishedRamp;
+
+    // OUTPUTS
+    float output;
+    int16_t outputPositive_mA;
+    int16_t outputNegative_mA;
+
+} ramp_ts;
+
+// Ramp() - one-dimensional function that will ramp an output based on an input setpoint and current setpoint
+void Ramp(ramp_ts* ramp_s)
+{
+    // clip setpoint to min and max output values
+    ramp_s->currentSetpoint = (int8_t)scale(ramp_s->inputVal, ramp_s->outputMin, ramp_s->outputMax, ramp_s->outputMin, ramp_s->outputMax, TRUE);
+
+    // Ramp setpoint - jerk
+    if (ramp_s->limitJerk)
+    {
+        //ramp_s->setpoint = ramp_s->currentSetpoint;
+    }
+    else
+    {
+        //ramp_s->setpoint = ramp_s->currentSetpoint;
+    }
+
+    // Ramp setpoint - acceleration
+    if (ramp_s->limitAccel)
+    {
+        float v1 = (ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint) * ramp_s->dt;
+        float v2 = (ramp_s->currentSetpoint - ramp_s->prevSetpoint) * ramp_s->dt;
+
+        float currentVelocity = (ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint) * ramp_s->dt;
+
+        float error = ramp_s->currentSetpoint - ramp_s->prevSetpoint;
+        int errorDirection = (error < 0.0f) ? -1 : 1;
+
+        float maxP2;
+
+        // use Vf = Vi + a * t to find time it will take to slow down
+        float stopTimeGivenCurrentVelocity = (currentVelocity - 0) / ramp_s->maxAccel;
+
+        // then use s(t) = v * t + 0.5 * a * t ^2 given that t to find out if that stopping position is within a certain tolerance to start slowing down
+        float stopPosGivenCurrentVelocity = (currentVelocity * stopTimeGivenCurrentVelocity) + 0.5f * ramp_s->maxAccel * stopTimeGivenCurrentVelocity * stopTimeGivenCurrentVelocity;
+
+        bool startDecel = false;
+        // If we're close enough to the setpoint, just start slowing down
+        if (stopPosGivenCurrentVelocity - ramp_s->currentSetpoint < 1)
+        {
+            startDecel = true;
+        }
+
+        float preCalcedAccel = (ramp_s->currentSetpoint - 2.0f * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / ramp_s->dt;
+
+        if (errorDirection > 0)
+        {
+            if (startDecel)
+            {
+                //maxP2 = -ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+                maxP2 = ramp_s->dt * ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+            }
+            else
+            {
+                //maxP2 = ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+                maxP2 = ramp_s->dt * -ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+            }
+            //if (maxP2 > ramp_s->currentSetpoint) // if we are below the threshold for acceleration, just go straight to setpoint.
+            //{
+            //    ramp_s->setpoint = ramp_s->currentSetpoint;
+            //}
+        }
+        else
+        {
+            if (startDecel)
+            {
+                //maxP2 = -ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+                maxP2 = ramp_s->dt * -ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+            }
+            else
+            {
+                //maxP2 = ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+                maxP2 = ramp_s->dt * ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+            }
+            //if (maxP2 < ramp_s->currentSetpoint) // if we are below the threshold for acceleration, just go straight to setpoint.
+            //{
+            //    ramp_s->setpoint = ramp_s->currentSetpoint;
+            //}
+        }
+
+        ramp_s->setpoint = maxP2;
+        float accel = (ramp_s->setpoint - 2.0f * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / ramp_s->dt;
+
+        ImGui::Text("calced velocity: %.1f", currentVelocity);
+        ImGui::Text("calced preCalcedAccel: %.1f", preCalcedAccel);
+        ImGui::Text("calced Accel: %.1f", accel);
+        ImGui::Text("calced startDecel: %d", startDecel);
+        ImGui::Text("calced maxP2: %.1f", maxP2);
+        ImGui::Text("calced error: %.1f", error);
+    }
+    else
+    {
+        //ramp_s->setpoint = ramp_s->currentSetpoint;
+    }
+
+    // Ramp setpoint - velocity
+    if (ramp_s->limitVelocity)
+    {
+        float error = ramp_s->currentSetpoint - ramp_s->prevSetpoint;
+        int errorDirection = (error < 0.0f) ? -1 : 1;
+        error = fabs(error);
+        if (error > (ramp_s->maxVelocity * ramp_s->dt))
+        {
+            if (errorDirection > 0)
+            {
+                ramp_s->setpoint += (ramp_s->maxVelocity * ramp_s->dt);
+            }
+            else
+            {
+                ramp_s->setpoint -= (ramp_s->maxVelocity * ramp_s->dt);
+            }
+        }
+        else
+        {
+            ramp_s->setpoint = ramp_s->currentSetpoint;
+        }
+    }
+    else
+    {
+        //ramp_s->setpoint = ramp_s->currentSetpoint;
+    }
+
+    ramp_s->output = ramp_s->setpoint;
+    ramp_s->prevPrevSetpoint = ramp_s->prevSetpoint; // make sure to update prevSetpoint
+    ramp_s->prevSetpoint = ramp_s->output; // make sure to update prevSetpoint
 }
 
 
@@ -2157,6 +2325,151 @@ int main(int, char**)
                     show_PID_window = false;
                 ImGui::End();
             }
+
+
+            static bool show_ramp_window = true;
+            // 3. Show a PID loop window
+            if (show_ramp_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Appearing);
+                ImGui::Begin("Curve Window", &show_ramp_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    static bool limitVelocity = false;
+                    static bool limitAcceleration = true;
+                    static bool limitJerk = false;
+
+                    ImGui::Text("Hello from Curve window!");
+                    ImGui::Checkbox("limit Velocity", &limitVelocity);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("limit Acceleration", &limitAcceleration);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("limit Jerk", &limitJerk);
+                    static int joystickVal = 0;
+                    ImGui::SliderInt("##Joystick Val", &joystickVal, -110, 110, "input: %d");
+                    //static int stopRampTime = 0;
+                    //ImGui::SliderInt("Stop Ramp Time (ms)", &stopRampTime, 0, 5000);
+
+
+                    static ramp_ts aux1Vals;
+
+                    static float maxVelocity = 1;
+                    static float maxAcceleration = 0;
+                    static float maxJerk = 0;
+
+                    if (limitVelocity)
+                        ImGui::SliderFloat("##max velocity", &maxVelocity, 0, 100, "Max Velocity: %.1f units/s");
+                    if (limitAcceleration)
+                        ImGui::SliderFloat("##max acceleration", &maxAcceleration, -10, 10, "Max Acceleration: %.1f units/s2");
+                    if (limitJerk)
+                        ImGui::SliderFloat("##max jerk", &maxJerk, -5, 5, "Max Jerk: %.1f units/s3");
+
+                    aux1Vals.inputVal = joystickVal;
+                    aux1Vals.maxVelocity = maxVelocity;
+                    aux1Vals.maxAccel = maxAcceleration;
+                    aux1Vals.dt = 0.016; // loop time
+                    aux1Vals.outputMin = -100.0;
+                    aux1Vals.outputMax = 100.0;
+                    aux1Vals.limitVelocity = limitVelocity;
+                    aux1Vals.limitAccel = limitAcceleration;
+                    aux1Vals.limitJerk = limitJerk;
+
+                    Ramp(&aux1Vals);
+
+                    int output = aux1Vals.output;
+                    ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(1.f, 0.f, 0.f));
+
+                    const int NUM_VALUES = 90;
+                    static float values[NUM_VALUES] = {};
+                    static int values_offset = 0;
+                    float average = 0.0f;
+                    static int counter = 0;
+
+                    static uint64_t prevUpdateVal = 0;
+                    const uint64_t updateValTimeout = 50;
+                    if (io.MousePos.y > -10000 && io.MousePos.y < 10000)
+                    {
+                        if (Timer(prevUpdateVal, updateValTimeout, true))
+                        {
+                            values[counter] = output;
+                            if (counter < NUM_VALUES - 1)
+                            {
+                                counter++;
+                            }
+                            // push everything back
+                            if (counter == NUM_VALUES - 1)
+                            {
+                                for (int i = 1; i < NUM_VALUES; i++)
+                                {
+                                    values[i - 1] = values[i];
+                                }
+                            }
+                        }
+                    }
+                    for (int n = 0; n < IM_ARRAYSIZE(values); n++)
+                        average += values[n];
+                    average /= (float)IM_ARRAYSIZE(values);
+                    char overlay[32];
+                    sprintf(overlay, "val %.0f", values[counter]);
+
+                    if (ImGui::BeginTable("table_nested1", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable))
+                    {
+                        ImGui::TableSetupColumn("Graph");
+                        ImGui::TableSetupColumn("Values");
+                        ImGui::TableHeadersRow();
+
+                        ImGui::TableNextColumn();
+
+                        float minVal = -127;// 0;// getMin(values, NUM_VALUES);
+                        float maxVal = 127;// aux1Vals.posMax_mA;// getMax(values, NUM_VALUES);
+                        const float PLOT_HEIGHT = 160.0f;
+                        ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, minVal, maxVal, ImVec2(0, PLOT_HEIGHT));
+
+
+                        //ImGui::Text("A0 Row 0");
+                        ImGui::TableNextColumn();
+                        //ImGui::Text("A1 Row 0");
+                        {
+                            float rows_height = 80 / 3;
+                            if (ImGui::BeginTable("table_nested2", 1, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable))
+                            {
+                                ImGui::TableSetupColumn("B0");
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                ImGui::Text("max: %d", (int)maxVal);
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                if (counter < NUM_VALUES - 1)
+                                {
+                                    ImGui::Text("val: %d", (int)values[counter - 1]);
+                                }
+                                else
+                                {
+                                    ImGui::Text("val: %d", (int)values[counter]);
+                                }
+
+                                ImGui::TableNextRow(ImGuiTableRowFlags_None, rows_height);
+                                ImGui::TableNextColumn();
+                                ImGui::Text("min: %d", (int)minVal);
+
+                                ImGui::EndTable();
+                            }
+                        }
+                        //ImGui::TableNextColumn(); ImGui::Text("A0 Row 1");
+                        //ImGui::TableNextColumn(); ImGui::Text("A1 Row 1");
+                        ImGui::EndTable();
+                    }
+                    ImGui::PopStyleColor();
+                    //ImGui::PlotLines("##Lines", values, IM_ARRAYSIZE(values), values_offset, overlay, getMin(values, NUM_VALUES), getMax(values, NUM_VALUES), ImVec2(0, 80.0f));
+                    //ImGui::SameLine();
+                    ImGui::Text("max");
+                }
+                if (ImGui::Button("Close Me"))
+                    show_ramp_window = false;
+                ImGui::End();
+            }
+
             static bool show_kalman_window = true;
             // 3. Show a PID loop window
             if (show_kalman_window)
@@ -3035,6 +3348,26 @@ int main(int, char**)
                     ImGui::Text("POS3: %.2f/%.2f", arm.joints[3].x, arm.joints[3].y);
 
                     ImGui::Text("End-effector joint is %s shape", pointInBounds ? "inside" : "outside");
+
+                    float start = 0.0f;
+                    float end = 10.0f;
+                    float dt = 0.016f;
+
+                    static ScurveGenerator gen = {
+                        .current_time = 0.0f,
+                        .dt = dt,
+                        .state = {0},
+                        .direction = (end - start > 0.0f) ? 1.0f : -1.0f
+                    };
+
+                    float distance = fabsf(end - start);
+                    compute_scurve_profile(&gen.profile, distance, 10.0f, 5.0f, 3.0f);
+
+                    //while (gen.current_time < gen.profile.total_time + dt) {}
+
+                    scurve_step(&gen);
+                    float pos = start + gen.state.position * gen.direction;
+                    ImGui::Text("t=%.2f pos=%.3f vel=%.3f acc=%.3f\n", gen.current_time, pos, gen.state.velocity * gen.direction, gen.state.acceleration * gen.direction);
                 }
                 ImGui::End();
             }

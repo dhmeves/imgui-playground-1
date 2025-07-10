@@ -26,7 +26,32 @@ typedef struct polygon_ts
     float y[NUM_POLYGON_CORNERS];
 };
 
+typedef struct {
+    float position;
+    float velocity;
+    float acceleration;
+} MotionState;
+
+typedef struct {
+    float j_max;
+    float a_max;
+    float v_max;
+    float total_time;
+    float t[7]; // t[0] to t[6] are duration of the 7 S-curve phases
+} ScurveProfile;
+
+typedef struct {
+    float current_time;
+    float dt;
+    MotionState state;
+    ScurveProfile profile;
+    float direction;
+} ScurveGenerator;
+
 const int NUM_LINKS = 3;
+
+void scurve_step(ScurveGenerator* gen);
+void compute_scurve_profile(ScurveProfile* p, float distance, float j_max, float a_max, float v_max);
 
 class Fsciks
 {
