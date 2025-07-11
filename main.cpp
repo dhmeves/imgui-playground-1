@@ -1528,9 +1528,8 @@ void Ramp(ramp_ts* ramp_s)
     }
 
     // Ramp setpoint - acceleration
-    if (ramp_s->limitAccel)
+    if (ramp_s->limitAccel && ramp_s->maxAccel != 0.0f) // if maxAccel is 0, we definitely don't want to use it
     {
-
         static float unlimitedAccel;
         static float currentVelocity;
         static float error;
@@ -1588,7 +1587,7 @@ void Ramp(ramp_ts* ramp_s)
 
             startDecel = false;
             // If we're close enough to the setpoint, just start slowing down
-            float setpointTolerance = 0.2f;
+            float setpointTolerance = 1.0f;
             decelTrigger = error + stopPosAtMaxAccel;
             if (decelTrigger < setpointTolerance && decelTrigger > -setpointTolerance)
             {
@@ -1655,23 +1654,28 @@ void Ramp(ramp_ts* ramp_s)
     // Ramp setpoint - velocity
     if (ramp_s->limitVelocity)
     {
-        float error = ramp_s->currentSetpoint - ramp_s->prevSetpoint;
+        float setpoint = ramp_s->currentSetpoint;
+        if ((ramp_s->limitAccel && ramp_s->maxAccel != 0.0f) || (ramp_s->limitJerk && ramp_s->maxJerk != 0.0f))
+        {
+            setpoint = ramp_s->setpoint;
+        }
+        float error = setpoint - ramp_s->prevSetpoint;
         int errorDirection = (error < 0.0f) ? -1 : 1;
         error = fabs(error);
         if (error > (ramp_s->maxVelocity * ramp_s->dt))
         {
             if (errorDirection > 0)
             {
-                ramp_s->setpoint += (ramp_s->maxVelocity * ramp_s->dt);
+                ramp_s->setpoint = ramp_s->prevSetpoint + (ramp_s->maxVelocity * ramp_s->dt);
             }
             else
             {
-                ramp_s->setpoint -= (ramp_s->maxVelocity * ramp_s->dt);
+                ramp_s->setpoint = ramp_s->prevSetpoint - (ramp_s->maxVelocity * ramp_s->dt);
             }
         }
         else
         {
-            ramp_s->setpoint = ramp_s->currentSetpoint;
+            ramp_s->setpoint = setpoint;// ramp_s->currentSetpoint;
         }
     }
     else
@@ -2382,7 +2386,7 @@ int main(int, char**)
             // 3. Show a PID loop window
             if (show_ramp_window)
             {
-                ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
                 ImGui::Begin("Curve Window", &show_ramp_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     static bool limitVelocity = false;
@@ -2414,19 +2418,32 @@ int main(int, char**)
                         aux1Vals.prevPrevSetpoint = 0.0f;
                         aux1Vals.prevPrevSetpoint = 0.0f;
                         maxAcceleration = 0.0f;
+                        maxVelocity = 0.0f;
                     }
+
+                    if (ImGui::Button("1.0 unit/s"))
+                        maxVelocity = 1.0f;
                     ImGui::SameLine();
-                    if (ImGui::Button("0.5 unit/s^2"))
-                        maxAcceleration = 0.5f;
+                    if (ImGui::Button("5.0 unit/s"))
+                        maxVelocity = 5.0f;
                     ImGui::SameLine();
+                    if (ImGui::Button("25.0 unit/s"))
+                        maxVelocity = 25.0f;
+                    ImGui::SameLine();
+                    if (ImGui::Button("100.0 unit/s"))
+                        maxVelocity = 100.0f;
+
                     if (ImGui::Button("1.0 unit/s^2"))
                         maxAcceleration = 1.0f;
                     ImGui::SameLine();
                     if (ImGui::Button("5.0 unit/s^2"))
                         maxAcceleration = 5.0f;
                     ImGui::SameLine();
-                    if (ImGui::Button("-1.0 unit/s^2"))
-                        maxAcceleration = -1.0f;
+                    if (ImGui::Button("10.0 unit/s^2"))
+                        maxAcceleration = 10.0f;
+                    ImGui::SameLine();
+                    if (ImGui::Button("25.0 unit/s^2"))
+                        maxAcceleration = 25.0f;
 
                     if (limitVelocity)
                         ImGui::SliderFloat("##max velocity", &maxVelocity, 0, 100, "Max Velocity: %.1f units/s");
