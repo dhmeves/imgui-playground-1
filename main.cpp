@@ -1541,6 +1541,25 @@ void Ramp(ramp_ts* ramp_s)
         static float stopPosAtMaxAccel;
         static bool startDecel;
         static float accel;
+        static float decelTrigger;
+
+        static bool oneShot = false;
+        if (ImGui::Button("Step Once"))
+        {
+            oneShot = true;
+        }
+        if (oneShot)
+        {
+            if (pause)
+            {
+                pause = false;
+            }
+            else
+            {
+                pause = true;
+                oneShot = false;
+            }
+        }
         ImGui::Checkbox("pause", &pause);
         if (!pause)
         {
@@ -1569,8 +1588,9 @@ void Ramp(ramp_ts* ramp_s)
 
             startDecel = false;
             // If we're close enough to the setpoint, just start slowing down
-            float setpointTolerance = 1.0f;
-            if (error + stopPosAtMaxAccel < setpointTolerance && error + stopPosAtMaxAccel > -setpointTolerance)
+            float setpointTolerance = 0.2f;
+            decelTrigger = error + stopPosAtMaxAccel;
+            if (decelTrigger < setpointTolerance && decelTrigger > -setpointTolerance)
             {
                 startDecel = true;
             }
@@ -1625,6 +1645,7 @@ void Ramp(ramp_ts* ramp_s)
         ImGui::Text("startDecel: %d", startDecel);
         ImGui::Text("maxP2: %.2f", maxP2);
         ImGui::Text("error: %.2f", error);
+        ImGui::Text("decelTrigger: %.2f", decelTrigger);
     }
     else
     {
@@ -2361,7 +2382,7 @@ int main(int, char**)
             // 3. Show a PID loop window
             if (show_ramp_window)
             {
-                ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Appearing);
                 ImGui::Begin("Curve Window", &show_ramp_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
                 {
                     static bool limitVelocity = false;
@@ -2395,17 +2416,17 @@ int main(int, char**)
                         maxAcceleration = 0.0f;
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("0.1 unit/s^2"))
-                        maxAcceleration = 0.1f;
-                    ImGui::SameLine();
                     if (ImGui::Button("0.5 unit/s^2"))
                         maxAcceleration = 0.5f;
                     ImGui::SameLine();
                     if (ImGui::Button("1.0 unit/s^2"))
                         maxAcceleration = 1.0f;
                     ImGui::SameLine();
-                    if (ImGui::Button("-0.1 unit/s^2"))
-                        maxAcceleration = -0.1f;
+                    if (ImGui::Button("5.0 unit/s^2"))
+                        maxAcceleration = 5.0f;
+                    ImGui::SameLine();
+                    if (ImGui::Button("-1.0 unit/s^2"))
+                        maxAcceleration = -1.0f;
 
                     if (limitVelocity)
                         ImGui::SliderFloat("##max velocity", &maxVelocity, 0, 100, "Max Velocity: %.1f units/s");
