@@ -1541,6 +1541,7 @@ void Ramp(ramp_ts* ramp_s)
         static bool startDecel;
         static float accel;
         static float decelTrigger;
+        static float setpointTolerance;
 
         static bool oneShot = false;
         if (ImGui::Button("Step Once"))
@@ -1587,12 +1588,21 @@ void Ramp(ramp_ts* ramp_s)
 
             startDecel = false;
             // If we're close enough to the setpoint, just start slowing down
-            float setpointTolerance = 1.0f;
+            setpointTolerance = 1.0f;
             decelTrigger = error + stopPosAtMaxAccel;
-            if (decelTrigger < setpointTolerance && decelTrigger > -setpointTolerance)
+            bool decelTriggerSign = decelTrigger > 0.0f ? true : false;
+            static bool prevDecelTriggerSign = decelTriggerSign;
+            float toleranceFactor = 2.0f * abs(decelTrigger / 1.0f); // adjust tolerance based on how far away we are from setpoint??
+            //setpointTolerance *= toleranceFactor; // probably not a good idea - should probably figure out another way to make sure we latch our decel
+            if (setpointTolerance < 1.0f)
+            {
+                setpointTolerance = 1.0f;
+            }
+            if ((decelTrigger < setpointTolerance && decelTrigger > -setpointTolerance) || decelTriggerSign != prevDecelTriggerSign)
             {
                 startDecel = true;
             }
+            prevDecelTriggerSign = decelTrigger > 0.0f ? true : false;
 
 
             if (errorDirection > 0)
@@ -1645,6 +1655,7 @@ void Ramp(ramp_ts* ramp_s)
         ImGui::Text("maxP2: %.2f", maxP2);
         ImGui::Text("error: %.2f", error);
         ImGui::Text("decelTrigger: %.2f", decelTrigger);
+        ImGui::Text("setpointTolerance: %.2f", setpointTolerance);
     }
     else
     {
@@ -1654,10 +1665,10 @@ void Ramp(ramp_ts* ramp_s)
     // Ramp setpoint - velocity
     if (ramp_s->limitVelocity)
     {
-        float setpoint = ramp_s->currentSetpoint;
+        float setpoint = ramp_s->currentSetpoint; // use the currentSetpoint by default
         if ((ramp_s->limitAccel && ramp_s->maxAccel != 0.0f) || (ramp_s->limitJerk && ramp_s->maxJerk != 0.0f))
         {
-            setpoint = ramp_s->setpoint;
+            setpoint = ramp_s->setpoint; // if we already have calculated values from another limit, use the setpoint calculated from that
         }
         float error = setpoint - ramp_s->prevSetpoint;
         int errorDirection = (error < 0.0f) ? -1 : 1;
@@ -2444,11 +2455,14 @@ int main(int, char**)
                     ImGui::SameLine();
                     if (ImGui::Button("25.0 unit/s^2"))
                         maxAcceleration = 25.0f;
+                    ImGui::SameLine();
+                    if (ImGui::Button("100.0 unit/s^2"))
+                        maxAcceleration = 100.0f;
 
                     if (limitVelocity)
                         ImGui::SliderFloat("##max velocity", &maxVelocity, 0, 100, "Max Velocity: %.1f units/s");
                     if (limitAcceleration)
-                        ImGui::SliderFloat("##max acceleration", &maxAcceleration, -10, 10, "Max Acceleration: %.1f units/s2");
+                        ImGui::SliderFloat("##max acceleration", &maxAcceleration, -100, 100, "Max Acceleration: %.1f units/s2");
                     if (limitJerk)
                         ImGui::SliderFloat("##max jerk", &maxJerk, -5, 5, "Max Jerk: %.1f units/s3");
 
