@@ -1528,17 +1528,21 @@ void Ramp(ramp_ts* ramp_s)
     }
 
     // Ramp setpoint - acceleration
-    if (ramp_s->limitAccel && ramp_s->maxAccel != 0.0f) // if maxAccel is 0, we definitely don't want to use it
+    if (ramp_s->limitAccel)// && ramp_s->maxAccel != 0.0f) // if maxAccel is 0, we definitely don't want to use it
     {
         static float unlimitedAccel;
+        static float acceleration;
         static float currentVelocity;
         static float error;
         static int errorDirection;
+        static float stopPosError;
+        static int stopPosErrorDirection;
         static float maxP2;
         static float stopTimeGivenCurrentVelocity;
         static float accelDirection;
+        static float stopDisplacmentAtMaxAccel;
         static float stopPosAtMaxAccel;
-        static bool startDecel;
+        static bool startDecel = false;
         static float accel;
         static float decelTrigger;
         static float setpointTolerance;
@@ -1584,11 +1588,26 @@ void Ramp(ramp_ts* ramp_s)
 
             // then use s(t) = v * t + 0.5 * a * t ^2 given that t to find out if that stopping position is within a certain tolerance to start slowing down
             //float stopPosGivenCurrentVelocity = (currentVelocity * stopTimeGivenCurrentVelocity) + 0.5f * (ramp_s->maxAccel * accelDirection) * stopTimeGivenCurrentVelocity * stopTimeGivenCurrentVelocity;
-            stopPosAtMaxAccel = (0.0 - currentVelocity * currentVelocity) / (2.0 * ramp_s->maxAccel * accelDirection);
+            stopDisplacmentAtMaxAccel = (0.0 - currentVelocity * currentVelocity) / (2.0 * ramp_s->maxAccel * accelDirection);
+            stopPosAtMaxAccel = ramp_s->prevSetpoint + stopDisplacmentAtMaxAccel;
 
-            startDecel = false;
+
+             //TODO - RM: IF WE CHECK IF WE WILL BE EQUAL OR OVERSHOOT SETPOINT, JUST CHECK CURRENT VELOCITY DIRECTION AND DECEL UNTIL WE REACH SETPOINT???
+            stopPosError = stopPosAtMaxAccel - ramp_s->currentSetpoint;
+            stopPosErrorDirection = (stopPosError < 0.0f) ? -1 : 1;
+
+            if (stopPosErrorDirection != errorDirection)
+            {
+                startDecel = true;
+            }
+            else
+            {
+                startDecel = false;
+            }
+
+            //startDecel = false;
             // If we're close enough to the setpoint, just start slowing down
-            setpointTolerance = 1.0f;
+            setpointTolerance = 0.1f;
             decelTrigger = error + stopPosAtMaxAccel;
             bool decelTriggerSign = decelTrigger > 0.0f ? true : false;
             static bool prevDecelTriggerSign = decelTriggerSign;
@@ -1600,44 +1619,41 @@ void Ramp(ramp_ts* ramp_s)
             }
             if ((decelTrigger < setpointTolerance && decelTrigger > -setpointTolerance) || decelTriggerSign != prevDecelTriggerSign)
             {
-                startDecel = true;
+                //startDecel = true;
             }
             prevDecelTriggerSign = decelTrigger > 0.0f ? true : false;
 
+            acceleration = ramp_s->maxAccel;
+            if (fabs(unlimitedAccel) < ramp_s->maxAccel)
+            {
+                acceleration = fabs(unlimitedAccel);
+                //maxP2 = ramp_s->currentSetpoint;
+                //ramp_s->prevSetpoint = maxP2; // this fixes the slap back when we manually set our point below accel threshold
+            }
 
             if (errorDirection > 0)
             {
-                if (startDecel)
+                if (!startDecel)
                 {
-                    //maxP2 = -ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
-                    maxP2 = ramp_s->dt * ramp_s->dt * ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+                    acceleration *= -1.0f;
                 }
-                else
-                {
-                    //maxP2 = ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
-                    maxP2 = ramp_s->dt * ramp_s->dt * -ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
-                }
-                //if (maxP2 > ramp_s->currentSetpoint) // if we are below the threshold for acceleration, just go straight to setpoint.
-                //{
-                //    ramp_s->setpoint = ramp_s->currentSetpoint;
-                //}
             }
-            else
+            else if (startDecel)
             {
-                if (startDecel)
+                acceleration *= -1.0f;
+            }
+
+            maxP2 = ramp_s->dt * ramp_s->dt * acceleration + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+
+
+            // if we started Deceling, let's not blow past and latch our decel until we hit our setpoint (within tolerance)
+            if (startDecel)
+            {
+                //float prevDirection = ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint; // if positive, we've been going positive.
+                if (error > -1.0f && error < 1.0f)
                 {
-                    //maxP2 = -ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
-                    maxP2 = ramp_s->dt * ramp_s->dt * -ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+                    //startDecel = false;
                 }
-                else
-                {
-                    //maxP2 = ramp_s->maxAccel / ramp_s->dt + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
-                    maxP2 = ramp_s->dt * ramp_s->dt * ramp_s->maxAccel + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
-                }
-                //if (maxP2 < ramp_s->currentSetpoint) // if we are below the threshold for acceleration, just go straight to setpoint.
-                //{
-                //    ramp_s->setpoint = ramp_s->currentSetpoint;
-                //}
             }
 
             ramp_s->setpoint = maxP2;
@@ -1645,17 +1661,21 @@ void Ramp(ramp_ts* ramp_s)
         }
         ImGui::Text("ramp_s->currentSetpoint: %.2f", ramp_s->currentSetpoint);
         ImGui::Text("ramp_s->prevSetpoint: %.2f", ramp_s->prevSetpoint);
-        ImGui::Text("ramp_s->prevPrevSetpoint: %.2f", ramp_s->prevPrevSetpoint);
+        ImGui::Text("maxP2: %.2f", maxP2);
+        //ImGui::Text("ramp_s->prevPrevSetpoint: %.2f", ramp_s->prevPrevSetpoint);
         ImGui::Text("stopTimeGivenCurrentVelocity: %.2f", stopTimeGivenCurrentVelocity);
         ImGui::Text("stopPosAtMaxAccel: %.2f", stopPosAtMaxAccel);
         ImGui::Text("velocity: %.2f", currentVelocity);
         ImGui::Text("unlimitedAccel: %.2f", unlimitedAccel);
         ImGui::Text("Accel: %.2f", accel);
         ImGui::Text("startDecel: %d", startDecel);
-        ImGui::Text("maxP2: %.2f", maxP2);
         ImGui::Text("error: %.2f", error);
-        ImGui::Text("decelTrigger: %.2f", decelTrigger);
-        ImGui::Text("setpointTolerance: %.2f", setpointTolerance);
+        ImGui::Text("stopPosError: %.2f", stopPosError);
+        //ImGui::Text("decelTrigger: %.2f", decelTrigger);
+        //ImGui::Text("setpointTolerance: %.2f", setpointTolerance);
+        ImGui::Text("errorDirection: %d", errorDirection);
+        ImGui::Text("stopPosErrorDirection: %d", stopPosErrorDirection);
+        ImGui::Text("acceleration: %f", acceleration);
     }
     else
     {
@@ -2427,7 +2447,6 @@ int main(int, char**)
                     {
                         aux1Vals.prevSetpoint = 0.0f;
                         aux1Vals.prevPrevSetpoint = 0.0f;
-                        aux1Vals.prevPrevSetpoint = 0.0f;
                         maxAcceleration = 0.0f;
                         maxVelocity = 0.0f;
                     }
@@ -2458,6 +2477,9 @@ int main(int, char**)
                     ImGui::SameLine();
                     if (ImGui::Button("100.0 unit/s^2"))
                         maxAcceleration = 100.0f;
+                    ImGui::SameLine();
+                    if (ImGui::Button("1000.0 unit/s^2"))
+                        maxAcceleration = 1000.0f;
 
                     if (limitVelocity)
                         ImGui::SliderFloat("##max velocity", &maxVelocity, 0, 100, "Max Velocity: %.1f units/s");
