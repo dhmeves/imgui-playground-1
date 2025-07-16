@@ -2579,11 +2579,11 @@ void Ramp2D(ramp2D_ts* ramp2D_s)
             {
                 //trajectory_init(&calc, ramp_s->maxVelocity, ramp_s->maxAccel, ramp_s->maxJerk, ramp_s->dt);
                 trajectory2D_init(&calc2D, ramp2D_s->maxVelocity, ramp2D_s->maxAccel, ramp2D_s->maxJerk, ramp2D_s->dt);
-                trajectory2D_setPositionTolerance(&calc2D, 1.0);
-                trajectory2D_setVelocityTolerance(&calc2D, 1.0);
+
                 initialized = true;
             }
-
+            trajectory2D_setPositionTolerance(&calc2D, 10.0);
+            trajectory2D_setVelocityTolerance(&calc2D, 10.0);
             // Set target position
             trajectory2D_setTarget(&calc2D, ramp2D_s->inputVal);
             //trajectory_setCurrentState(&calc, ramp_s->prevSetpoint, currentVelocity, currentAccel);
