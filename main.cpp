@@ -1469,19 +1469,374 @@ void RampedOutput(rampedOutput_ts* rampedVals)
     rampedVals->prevSetpoint = rampedVals->setpoint; // make sure to update prevSetpoint
 }
 
+typedef struct {
+    double position;
+    double velocity;
+    double acceleration;
+    double jerk;
+    bool inDecelPhase;
+    bool targetReached;
+} MotionProfile_ts;
+
+typedef struct {
+    // Configuration
+    double maxVelocity;
+    double maxAcceleration;
+    double maxJerk;
+    double dt;
+    double positionTolerance;
+    double velocityTolerance;
+
+    // State variables
+    double currentPos;
+    double currentVel;
+    double currentAccel;
+    double targetPos;
+
+    // Deceleration detection
+    bool decelStarted;
+    double decelStartPos;
+    double decelStartVel;
+} TrajectoryCalculator;
+
+// Helper function to clamp a value between min and max
+double clamp(double value, double min_val, double max_val) {
+    if (value < min_val) return min_val;
+    if (value > max_val) return max_val;
+    return value;
+}
+
+// Helper function for absolute value
+double fabs_custom(double x) {
+    return (x < 0) ? -x : x;
+}
+
+// Initialize trajectory calculator
+void trajectory_init(TrajectoryCalculator* calc, double maxVel, double maxAccel, double maxJerk, double timeStep) {
+    calc->maxVelocity = maxVel;
+    calc->maxAcceleration = maxAccel;
+    calc->maxJerk = maxJerk;
+    calc->dt = timeStep;
+    calc->positionTolerance = 0.01;
+    calc->velocityTolerance = 0.01;
+
+    // Initialize state
+    calc->currentPos = 0.0;
+    calc->currentVel = 0.0;
+    calc->currentAccel = 0.0;
+    calc->targetPos = 0.0;
+    calc->decelStarted = false;
+    calc->decelStartPos = 0.0;
+    calc->decelStartVel = 0.0;
+}
+
+// Reset trajectory calculator
+void trajectory_reset(TrajectoryCalculator* calc) {
+    calc->currentPos = 0.0;
+    calc->currentVel = 0.0;
+    calc->currentAccel = 0.0;
+    calc->targetPos = 0.0;
+    calc->decelStarted = false;
+    calc->decelStartPos = 0.0;
+    calc->decelStartVel = 0.0;
+}
+
+// Set target position
+void trajectory_setTarget(TrajectoryCalculator* calc, double target) {
+    // If target has changed significantly, reset deceleration state
+    if (fabs_custom(target - calc->targetPos) > calc->positionTolerance) {
+        calc->decelStarted = false;
+        calc->decelStartPos = 0.0;
+        calc->decelStartVel = 0.0;
+    }
+    calc->targetPos = target;
+}
+
+// Set current state
+void trajectory_setCurrentState(TrajectoryCalculator* calc, double pos, double vel, double accel) {
+    calc->currentPos = pos;
+    calc->currentVel = vel;
+    calc->currentAccel = accel;
+}
+
+// Calculate stopping distance given current velocity and acceleration
+double trajectory_calculateStoppingDistance(TrajectoryCalculator* calc, double velocity, double acceleration) {
+    if (fabs_custom(acceleration) < 1e-6) {
+        // If no acceleration, use maximum deceleration
+        return (velocity * velocity) / (2.0 * calc->maxAcceleration);
+    }
+
+    // Time to decelerate to zero velocity
+    double timeToStop = fabs_custom(velocity) / calc->maxAcceleration;
+
+    // Distance during deceleration: s = v*t - 0.5*a*t^2
+    double stoppingDistance = fabs_custom(velocity) * timeToStop -
+        0.5 * calc->maxAcceleration * timeToStop * timeToStop;
+
+    return stoppingDistance;
+}
+
+// Predict if we'll overshoot with current trajectory
+bool trajectory_willOvershoot(TrajectoryCalculator* calc, double lookaheadSteps) {
+    double futurePos = calc->currentPos;
+    double futureVel = calc->currentVel;
+    double futureAccel = calc->currentAccel;
+
+    // Simulate forward trajectory
+    int maxSteps = (int)lookaheadSteps;
+    for (int i = 0; i < maxSteps; i++) {
+        // Update using current acceleration
+        futurePos += futureVel * calc->dt + 0.5 * futureAccel * calc->dt * calc->dt;
+        futureVel += futureAccel * calc->dt;
+
+        // Check if we'll overshoot
+        double remainingDistance = calc->targetPos - futurePos;
+        double stoppingDistance = trajectory_calculateStoppingDistance(calc, futureVel, futureAccel);
+
+        if ((remainingDistance > 0 && futureVel > 0 && stoppingDistance > remainingDistance) ||
+            (remainingDistance < 0 && futureVel < 0 && stoppingDistance > fabs_custom(remainingDistance))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+
+// Main trajectory calculation function
+MotionProfile_ts trajectory_calculateNextPoint(TrajectoryCalculator* calc) {
+    MotionProfile_ts profile;
+
+    double error = calc->targetPos - calc->currentPos;
+    double errorDirection = (error > 0) ? 1.0 : -1.0;
+
+    // Check if we're close enough to target
+    if (fabs_custom(error) < calc->positionTolerance && fabs_custom(calc->currentVel) < calc->velocityTolerance) {
+        profile.position = calc->targetPos;
+        profile.velocity = 0.0;
+        profile.acceleration = 0.0;
+        profile.jerk = 0.0;
+        profile.inDecelPhase = false;
+        profile.targetReached = true;
+        return profile;
+    }
+
+    // Check if we're moving away from target - if so, reset decel state and accelerate toward target
+    bool movingAwayFromTarget = ((error > 0 && calc->currentVel < -calc->velocityTolerance) ||
+        (error < 0 && calc->currentVel > calc->velocityTolerance));
+
+    if (movingAwayFromTarget) {
+        calc->decelStarted = false;  // Reset decel state if moving wrong direction
+    }
+
+    // Determine if we should start decelerating
+    bool shouldDecelerate = false;
+
+    // Don't decelerate if we're moving away from target
+    if (!movingAwayFromTarget) {
+        // Calculate stopping distance - account for jerk limiting if enabled
+        double stoppingDistance = 0.0;
+
+        // If jerk limiting is enabled, we need more distance to change acceleration
+        if (calc->maxJerk > 0) {
+            // Determine the direction we need to decelerate
+            double decelDirection = (calc->currentVel > 0) ? -1.0 : 1.0;
+            double targetDecelAccel = decelDirection * calc->maxAcceleration;
+
+            // How much do we need to change acceleration?
+            double accelChangeNeeded = fabs_custom(targetDecelAccel - calc->currentAccel);
+
+            // Time to change from current acceleration to max deceleration
+            double timeToMaxDecel = accelChangeNeeded / calc->maxJerk;
+
+            // Distance traveled during acceleration change (using current velocity and acceleration)
+            double accelChangeDistance = calc->currentVel * timeToMaxDecel +
+                0.5 * calc->currentAccel * timeToMaxDecel * timeToMaxDecel;
+
+            // Velocity at end of acceleration change period
+            double velAfterAccelChange = calc->currentVel + calc->currentAccel * timeToMaxDecel;
+
+            // Additional stopping distance after reaching max deceleration
+            double additionalStopDistance = 0.0;
+            if (fabs_custom(velAfterAccelChange) > 1e-6) {
+                additionalStopDistance = (velAfterAccelChange * velAfterAccelChange) / (2.0 * calc->maxAcceleration);
+            }
+
+            // Total stopping distance is the sum
+            stoppingDistance = fabs_custom(accelChangeDistance) + additionalStopDistance;
+
+            // Debug: only trigger if we're actually moving toward target and stopping distance is reasonable
+            bool movingTowardTarget = ((error > 0 && calc->currentVel > 0) || (error < 0 && calc->currentVel < 0));
+
+            if (movingTowardTarget && fabs_custom(error) <= stoppingDistance * 1.1) {
+                shouldDecelerate = true;
+            }
+        }
+        else {
+            // No jerk limiting - use simple stopping distance calculation
+            if (fabs_custom(calc->currentVel) > 1e-6) {
+                stoppingDistance = (calc->currentVel * calc->currentVel) / (2.0 * calc->maxAcceleration);
+            }
+
+            double distanceToTarget = fabs_custom(error);
+
+            // Main deceleration trigger: do we need to start decelerating to stop at target?
+            if (distanceToTarget <= stoppingDistance) {
+                shouldDecelerate = true;
+            }
+
+            // Additional check: if we're moving toward target and very close, start decelerating
+            bool movingTowardTarget = ((error > 0 && calc->currentVel > 0) || (error < 0 && calc->currentVel < 0));
+            if (movingTowardTarget && distanceToTarget <= stoppingDistance * 1.1) {
+                shouldDecelerate = true;
+            }
+        }
+
+        // Lookahead check: will we overshoot if we don't decelerate now?
+        if (trajectory_willOvershoot(calc, 1.0)) {
+            shouldDecelerate = true;
+        }
+
+        // Additional safety: don't start deceleration too early if we're still far from target
+        if (fabs_custom(error) > 10.0 && fabs_custom(calc->currentVel) < 1.0) {
+            shouldDecelerate = false;  // Don't decelerate when far away and moving slowly
+        }
+    }
+
+    // Calculate desired acceleration
+    double desiredAccel = 0.0;
+
+    if (shouldDecelerate || calc->decelStarted) {
+        calc->decelStarted = true;
+
+        // Calculate precise deceleration to hit target exactly
+        // Using: v_f^2 = v_i^2 + 2*a*d, solve for a to get v_f = 0 at target
+        if (fabs_custom(error) > calc->positionTolerance) {
+            // Calculate exact acceleration needed to reach target with zero velocity
+            desiredAccel = -(calc->currentVel * calc->currentVel) / (2.0 * error);
+
+            // Only limit if the calculated acceleration exceeds our capability
+            if (fabs_custom(desiredAccel) > calc->maxAcceleration) {
+                desiredAccel = (desiredAccel > 0) ? calc->maxAcceleration : -calc->maxAcceleration;
+            }
+        }
+        else {
+            // Very close to target, decelerate to zero quickly
+            desiredAccel = -calc->currentVel / calc->dt;
+            desiredAccel = clamp(desiredAccel, -calc->maxAcceleration, calc->maxAcceleration);
+        }
+
+        profile.inDecelPhase = true;
+    }
+    else {
+        // Acceleration phase - use full acceleration toward target
+        if (fabs_custom(calc->currentVel) < calc->maxVelocity) {
+            desiredAccel = errorDirection * calc->maxAcceleration;
+        }
+        else {
+            desiredAccel = 0.0; // Coast at max velocity
+        }
+
+        profile.inDecelPhase = false;
+    }
+
+    // Safety check: if we're moving away from target, always accelerate toward it
+    if (movingAwayFromTarget) {
+        desiredAccel = errorDirection * calc->maxAcceleration;
+        profile.inDecelPhase = false;
+        calc->decelStarted = false;
+    }
+
+    // Apply jerk limiting if specified
+    if (calc->maxJerk > 0) {
+        double jerkLimit = calc->maxJerk * calc->dt;
+        double accelChange = desiredAccel - calc->currentAccel;
+
+        if (fabs_custom(accelChange) > jerkLimit) {
+            // Limit the acceleration change rate
+            double limitedAccelChange = (accelChange > 0) ? jerkLimit : -jerkLimit;
+            desiredAccel = calc->currentAccel + limitedAccelChange;
+
+            // If we're in deceleration phase and jerk limiting is preventing us from decelerating fast enough,
+            // be more aggressive to prevent overshoot
+            if (profile.inDecelPhase && fabs_custom(error) < calc->positionTolerance * 10.0) {
+                // Very close to target - use larger jerk limit for final approach
+                double emergencyJerkLimit = calc->maxJerk * calc->dt * 3.0; // 3x normal jerk limit
+                if (fabs_custom(accelChange) > emergencyJerkLimit) {
+                    limitedAccelChange = (accelChange > 0) ? emergencyJerkLimit : -emergencyJerkLimit;
+                    desiredAccel = calc->currentAccel + limitedAccelChange;
+                }
+            }
+        }
+
+        profile.jerk = (desiredAccel - calc->currentAccel) / calc->dt;
+    }
+    else {
+        profile.jerk = 0.0;
+    }
+
+    // Update state using kinematic equations
+    double newAccel = desiredAccel;
+    double newVel = calc->currentVel + newAccel * calc->dt;
+    double newPos = calc->currentPos + calc->currentVel * calc->dt + 0.5 * newAccel * calc->dt * calc->dt;
+
+    // Velocity limiting
+    if (fabs_custom(newVel) > calc->maxVelocity) {
+        newVel = (newVel > 0) ? calc->maxVelocity : -calc->maxVelocity;
+        newAccel = (newVel - calc->currentVel) / calc->dt;
+    }
+
+    // Final position check - only clamp if we actually overshoot
+    if ((error > 0 && newPos > calc->targetPos) || (error < 0 && newPos < calc->targetPos)) {
+        // We've overshot - clamp to target and stop
+        newPos = calc->targetPos;
+        newVel = 0.0;
+        newAccel = 0.0;
+    }
+
+    // Update internal state
+    calc->currentPos = newPos;
+    calc->currentVel = newVel;
+    calc->currentAccel = newAccel;
+
+    // Fill profile
+    profile.position = newPos;
+    profile.velocity = newVel;
+    profile.acceleration = newAccel;
+    profile.targetReached = (fabs_custom(calc->targetPos - newPos) < calc->positionTolerance &&
+        fabs_custom(newVel) < calc->velocityTolerance);
+
+    return profile;
+}
+
+// Getter functions
+double trajectory_getCurrentPosition(TrajectoryCalculator* calc) { return calc->currentPos; }
+double trajectory_getCurrentVelocity(TrajectoryCalculator* calc) { return calc->currentVel; }
+double trajectory_getCurrentAcceleration(TrajectoryCalculator* calc) { return calc->currentAccel; }
+double trajectory_getTarget(TrajectoryCalculator* calc) { return calc->targetPos; }
+
+// Setter functions for tuning
+void trajectory_setPositionTolerance(TrajectoryCalculator* calc, double tolerance) {
+    calc->positionTolerance = tolerance;
+}
+
+void trajectory_setVelocityTolerance(TrajectoryCalculator* calc, double tolerance) {
+    calc->velocityTolerance = tolerance;
+}
 
 typedef struct
 {
     // INPUTS
-    float inputVal;
-    float outputMin;
-    float outputMax;
+    double inputVal;
+    double outputMin;
+    double outputMax;
+    double maxVelocity;
+    double maxAccel;
+    double maxDecel;
+    double maxJerk;
+    double dt;
     bool inNeutral;
-    float maxVelocity;
-    float maxAccel;
-    float maxDecel;
-    float maxJerk;
-    float dt;
     bool limitVelocity;
     bool limitAccel;
     bool limitJerk;
@@ -1496,10 +1851,10 @@ typedef struct
     //float controlModeMult;
 
     // PRIVATE/INTERNAL
-    float setpoint;        // calculated setpoint (ramped)
-    float currentSetpoint; // calculated end-of-ramp setpoint
-    float prevSetpoint;    // setpoint from previous loop
-    float prevPrevSetpoint; // setpoint from 2 loops ago
+    double setpoint;        // calculated setpoint (ramped)
+    double currentSetpoint; // calculated end-of-ramp setpoint
+    double prevSetpoint;    // setpoint from previous loop
+    double prevPrevSetpoint; // setpoint from 2 loops ago
     uint64_t prevTime;
     bool finishedRamp;
 
@@ -1515,7 +1870,7 @@ void Ramp(ramp_ts* ramp_s)
 {
     static bool pause = false;
     // clip setpoint to min and max output values
-    ramp_s->currentSetpoint = (int8_t)scale(ramp_s->inputVal, ramp_s->outputMin, ramp_s->outputMax, ramp_s->outputMin, ramp_s->outputMax, TRUE);
+    ramp_s->currentSetpoint = scale(ramp_s->inputVal, ramp_s->outputMin, ramp_s->outputMax, ramp_s->outputMin, ramp_s->outputMax, TRUE);
 
     // Ramp setpoint - jerk
     if (ramp_s->limitJerk)
@@ -1530,27 +1885,30 @@ void Ramp(ramp_ts* ramp_s)
     // Ramp setpoint - acceleration
     if (ramp_s->limitAccel)// && ramp_s->maxAccel != 0.0f) // if maxAccel is 0, we definitely don't want to use it
     {
-        static float unlimitedAccel;
-        static float acceleration;
-        static float currentVelocity;
-        static float error;
+        static double unlimitedAccel;
+        static double acceleration;
+        static double currentVelocity;
+        static double error;
+        static double stopPosError;
+        static double maxP2;
+        static double stopTimeGivenCurrentVelocity;
+        static double accelDirection;
+        static double stopDisplacmentAtMaxAccel;
+        static double stopPosAtMaxAccel;
+        static double accel;
+        static double decelTrigger;
+        static double setpointTolerance;
+        static double futureStopPosAtMaxAccel;
+        static double futureVelocity;
+        static double futureStopPosError;
         static int errorDirection;
-        static float stopPosError;
-        static int stopPosErrorDirection;
-        static float maxP2;
-        static float stopTimeGivenCurrentVelocity;
-        static float accelDirection;
-        static float stopDisplacmentAtMaxAccel;
-        static float stopPosAtMaxAccel;
         static bool startDecel = false;
-        static float accel;
-        static float decelTrigger;
-        static float setpointTolerance;
-        static float futureStopPosAtMaxAccel;
-        static float futureVelocity;
-        static float futureStopPosError;
+        static int stopPosErrorDirection;
 
         static bool oneShot = false;
+
+        static TrajectoryCalculator calc;
+        static bool initialized = false;
         if (ImGui::Button("Step Once"))
         {
             oneShot = true;
@@ -1570,23 +1928,61 @@ void Ramp(ramp_ts* ramp_s)
         ImGui::Checkbox("pause", &pause);
         if (!pause)
         {
+            // Calculate current velocity and acceleration from setpoint history
+            double currentVelocity = (ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint) / ramp_s->dt;
+            double currentAccel = (ramp_s->currentSetpoint - 2.0 * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / (ramp_s->dt * ramp_s->dt);
+            if (!initialized)
+            {
+                //trajectory_init(&calc, ramp_s->maxVelocity, ramp_s->maxAccel, ramp_s->maxJerk, ramp_s->dt);
+                trajectory_init(&calc, ramp_s->maxVelocity, ramp_s->maxAccel, ramp_s->maxJerk, ramp_s->dt);
+                initialized = true;
+            }
+
+            // Set target and current state
+            //trajectory_setTarget(&calc, ramp_s->currentSetpoint);
+            //trajectory_setCurrentState(&calc, ramp_s->prevSetpoint, currentVelocity, currentAccel);
+
+            // Calculate next point
+            //MotionProfile_ts profile = trajectory_calculateNextPoint(&calc);
+            //ramp_s->setpoint = profile.position;
+
+
+
+            //trajectory_init(&calc, 10000.0, 5000.0, 0000.0, 0.01);
+
+            // Set target position
+            trajectory_setTarget(&calc, ramp_s->currentSetpoint);
+            //trajectory_setCurrentState(&calc, ramp_s->prevSetpoint, currentVelocity, currentAccel);
+            calc.maxVelocity = ramp_s->maxVelocity;
+            calc.maxAcceleration = ramp_s->maxAccel;
+            calc.maxJerk = ramp_s->maxJerk;
+            MotionProfile_ts profile = trajectory_calculateNextPoint(&calc);
+
+            double error = calc.targetPos - profile.position;
+            double stoppingDist = (profile.velocity * profile.velocity) / (2.0 * calc.maxAcceleration);
+
+            ramp_s->setpoint = profile.position;
+            ImGui::Text("Pos=%.3f, Vel=%.3f, Accel=%.3f, Decel=%d, Done=%d, Error=%.3f, StopDist=%.3f\n",
+                profile.position, profile.velocity, profile.acceleration,
+                profile.inDecelPhase, profile.targetReached, error, stoppingDist);
+            /*
             float v1 = (ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint) * ramp_s->dt;
             float v2 = (ramp_s->currentSetpoint - ramp_s->prevSetpoint) * ramp_s->dt;
 
-            unlimitedAccel = (ramp_s->currentSetpoint - 2.0f * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / ramp_s->dt;
+            unlimitedAccel = (ramp_s->currentSetpoint - 2.0 * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / ramp_s->dt;
 
             currentVelocity = (ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint) / ramp_s->dt;
 
             error = ramp_s->prevSetpoint - ramp_s->currentSetpoint;
-            errorDirection = (error < 0.0f) ? -1 : 1;
+            errorDirection = (error < 0.0) ? -1 : 1;
 
             // use Vf = Vi + a * t to find time it will take to slow down
             stopTimeGivenCurrentVelocity = (0 - currentVelocity) / ramp_s->maxAccel;
-            accelDirection = 1.0f;
-            if (stopTimeGivenCurrentVelocity < 0.0f) // negative times are a no-no
+            accelDirection = 1.0;
+            if (stopTimeGivenCurrentVelocity < 0.0) // negative times are a no-no
             {
-                stopTimeGivenCurrentVelocity *= -1.0f;
-                accelDirection = -1.0f;
+                stopTimeGivenCurrentVelocity *= -1.0;
+                accelDirection = -1.0;
             }
 
             // then use s(t) = v * t + 0.5 * a * t ^2 given that t to find out if that stopping position is within a certain tolerance to start slowing down
@@ -1597,7 +1993,7 @@ void Ramp(ramp_ts* ramp_s)
 
              //TODO - RM: IF WE CHECK IF WE WILL BE EQUAL OR OVERSHOOT SETPOINT, JUST CHECK CURRENT VELOCITY DIRECTION AND DECEL UNTIL WE REACH SETPOINT???
             stopPosError = stopPosAtMaxAccel - ramp_s->currentSetpoint;
-            stopPosErrorDirection = (stopPosError < 0.0f) ? -1 : 1;
+            stopPosErrorDirection = (stopPosError < 0.0) ? -1 : 1;
 
             if (stopPosErrorDirection != errorDirection)
             {
@@ -1610,28 +2006,28 @@ void Ramp(ramp_ts* ramp_s)
 
             //startDecel = false;
             // If we're close enough to the setpoint, just start slowing down
-            setpointTolerance = 0.1f;
+            setpointTolerance = 0.1;
             decelTrigger = error + stopPosAtMaxAccel;
             bool decelTriggerSign = decelTrigger > 0.0f ? true : false;
             static bool prevDecelTriggerSign = decelTriggerSign;
-            float toleranceFactor = 2.0f * abs(decelTrigger / 1.0f); // adjust tolerance based on how far away we are from setpoint??
+            float toleranceFactor = 2.0 * abs(decelTrigger / 1.0); // adjust tolerance based on how far away we are from setpoint??
             //setpointTolerance *= toleranceFactor; // probably not a good idea - should probably figure out another way to make sure we latch our decel
-            if (setpointTolerance < 1.0f)
+            if (setpointTolerance < 1.0)
             {
-                setpointTolerance = 1.0f;
+                setpointTolerance = 1.0;
             }
-            if ((decelTrigger < setpointTolerance && decelTrigger > -setpointTolerance) || decelTriggerSign != prevDecelTriggerSign)
+            if ((stopPosError < setpointTolerance && stopPosError > -setpointTolerance))// || decelTriggerSign != prevDecelTriggerSign)
             {
-                //startDecel = true;
+                startDecel = true;
             }
             prevDecelTriggerSign = decelTrigger > 0.0f ? true : false;
 
             acceleration = ramp_s->maxAccel;
             static float accelDivisor = 1;
             ImGui::SliderFloat("acceldivisor", &accelDivisor, 0.1f, 100.0f, "%.1f");
-            if (fabs(unlimitedAccel) < ramp_s->maxAccel / accelDivisor)
+            if (abs(unlimitedAccel) < ramp_s->maxAccel / accelDivisor)
             {
-                acceleration = fabs(unlimitedAccel);
+                acceleration = abs(unlimitedAccel);
                 //maxP2 = ramp_s->currentSetpoint;
                 //ramp_s->prevSetpoint = maxP2; // this fixes the slap back when we manually set our point below accel threshold
             }
@@ -1656,25 +2052,25 @@ void Ramp(ramp_ts* ramp_s)
             }
 
 
-            if (fabs(acceleration) < ramp_s->maxAccel / 20.0f) // if our acceleration is less than 10x our max accel, just go straight to the point
+            if (abs(acceleration) < ramp_s->maxAccel / 20.0) // if our acceleration is less than 10x our max accel, just go straight to the point
             {
                 maxP2 = ramp_s->currentSetpoint;
                 ramp_s->prevSetpoint = ramp_s->currentSetpoint;
             }
             else
             {
-                maxP2 = ramp_s->dt * ramp_s->dt * acceleration + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+                maxP2 = ramp_s->dt * ramp_s->dt * acceleration + 2.0 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
             }
 
             // RECURRSSSSSIOOOONNNNN - check if our next point will shoot past given our current acceleration - if so, start deceling early
             // use Vf = Vi + a * t to find time it will take to slow down
             futureVelocity = (maxP2 - ramp_s->prevSetpoint) / ramp_s->dt;
             float stopTimeGivenFutureVelocity = (0 - futureVelocity) / ramp_s->maxAccel;
-            float futureAccelDirection = 1.0f;
-            if (stopTimeGivenFutureVelocity < 0.0f) // negative times are a no-no
+            float futureAccelDirection = 1.0;
+            if (stopTimeGivenFutureVelocity < 0.0) // negative times are a no-no
             {
-                stopTimeGivenFutureVelocity *= -1.0f;
-                futureAccelDirection = -1.0f;
+                stopTimeGivenFutureVelocity *= -1.0;
+                futureAccelDirection = -1.0;
             }
 
             // then use s(t) = v * t + 0.5 * a * t ^2 given that t to find out if that stopping position is within a certain tolerance to start slowing down
@@ -1682,43 +2078,63 @@ void Ramp(ramp_ts* ramp_s)
             float futureStopDisplacementAtMaxAccel = (0.0 - futureVelocity * futureVelocity) / (2.0 * ramp_s->maxAccel * futureAccelDirection);
             futureStopPosAtMaxAccel = maxP2 + futureStopDisplacementAtMaxAccel;
 
-            futureStopPosError = futureStopPosAtMaxAccel - ramp_s->currentSetpoint;
-            int futureStopPosErrorDirection = (futureStopPosError < 0.0f) ? -1 : 1;
 
-            if (futureStopPosErrorDirection != errorDirection && !((maxP2 < ramp_s->currentSetpoint - 10.0f) && (maxP2 > ramp_s->currentSetpoint + 10.0f))) // We don't wanna change acceleration when close to setpoint
+            futureStopPosError = futureStopPosAtMaxAccel - ramp_s->currentSetpoint;
+            int futureStopPosErrorDirection = (futureStopPosError < 0.0) ? -1 : 1;
+
+            float futurePosError = maxP2 - ramp_s->currentSetpoint;
+            float reqdVelocityToStopPerfectly = sqrt(-2.0 * ramp_s->maxAccel * futurePosError);
+
+            if ((stopPosError > setpointTolerance || stopPosError < -setpointTolerance) && futureStopPosErrorDirection != errorDirection && !((maxP2 < ramp_s->currentSetpoint - 10.0f) && (maxP2 > ramp_s->currentSetpoint + 10.0f))) // We don't wanna change acceleration when close to setpoint
             {
-                acceleration *= -1.0f;
+                //acceleration *= -1.0f;
+                acceleration = (reqdVelocityToStopPerfectly - currentVelocity) / ramp_s->dt;
             }
 
 
-            maxP2 = ramp_s->dt * ramp_s->dt * acceleration + 2 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
+            maxP2 = ramp_s->dt * ramp_s->dt * acceleration + 2.0 * ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint;
 
+            // RECURRSSSSSIOOOONNNNN - check if our next point will shoot past given our current acceleration - if so, start deceling early
+            // use Vf = Vi + a * t to find time it will take to slow down
+            futureVelocity = (maxP2 - ramp_s->prevSetpoint) / ramp_s->dt;
+            stopTimeGivenFutureVelocity = (0 - futureVelocity) / ramp_s->maxAccel;
+            futureAccelDirection = 1.0;
+            if (stopTimeGivenFutureVelocity < 0.0) // negative times are a no-no
+            {
+                stopTimeGivenFutureVelocity *= -1.0;
+                futureAccelDirection = -1.0;
+            }
 
+            // then use s(t) = v * t + 0.5 * a * t ^2 given that t to find out if that stopping position is within a certain tolerance to start slowing down
+            //float stopPosGivenCurrentVelocity = (currentVelocity * stopTimeGivenCurrentVelocity) + 0.5f * (ramp_s->maxAccel * accelDirection) * stopTimeGivenCurrentVelocity * stopTimeGivenCurrentVelocity;
+            futureStopDisplacementAtMaxAccel = (0.0 - futureVelocity * futureVelocity) / (2.0 * ramp_s->maxAccel * futureAccelDirection);
+            futureStopPosAtMaxAccel = maxP2 + futureStopDisplacementAtMaxAccel;
             
 
             ramp_s->setpoint = maxP2;
-            accel = (ramp_s->setpoint - 2.0f * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / (ramp_s->dt * ramp_s->dt);
+            accel = (ramp_s->setpoint - 2.0 * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / (ramp_s->dt * ramp_s->dt);
+            */
         }
         ImGui::Text("ramp_s->currentSetpoint: %.2f", ramp_s->currentSetpoint);
         ImGui::Text("ramp_s->prevSetpoint: %.2f", ramp_s->prevSetpoint);
-        ImGui::Text("maxP2: %.2f", maxP2);
+        //ImGui::Text("maxP2: %.2f", maxP2);
         //ImGui::Text("ramp_s->prevPrevSetpoint: %.2f", ramp_s->prevPrevSetpoint);
-        ImGui::Text("stopTimeGivenCurrentVelocity: %.2f", stopTimeGivenCurrentVelocity);
-        ImGui::Text("stopPosAtMaxAccel: %.2f", stopPosAtMaxAccel);
-        ImGui::Text("futureStopPosAtMaxAccel: %.2f", futureStopPosAtMaxAccel);
-        ImGui::Text("velocity: %.2f", currentVelocity);
-        ImGui::Text("futureVelocity: %.2f", futureVelocity);
-        ImGui::Text("unlimitedAccel: %.2f", unlimitedAccel);
-        ImGui::Text("Accel: %.2f", accel);
-        ImGui::Text("startDecel: %d", startDecel);
-        ImGui::Text("error: %.2f", error);
-        ImGui::Text("stopPosError: %.2f", stopPosError);
-        ImGui::Text("futureStopPosError: %.2f", futureStopPosError);
+        //ImGui::Text("stopTimeGivenCurrentVelocity: %.2f", stopTimeGivenCurrentVelocity);
+        //ImGui::Text("stopPosAtMaxAccel: %.2f", stopPosAtMaxAccel);
+        //ImGui::Text("futureStopPosAtMaxAccel: %.2f", futureStopPosAtMaxAccel);
+        //ImGui::Text("velocity: %.2f", currentVelocity);
+        //ImGui::Text("futureVelocity: %.2f", futureVelocity);
+        //ImGui::Text("unlimitedAccel: %.2f", unlimitedAccel);
+        //ImGui::Text("Accel: %.2f", accel);
+        //ImGui::Text("startDecel: %d", startDecel);
+        //ImGui::Text("error: %.2f", error);
+        //ImGui::Text("stopPosError: %.2f", stopPosError);
+        //ImGui::Text("futureStopPosError: %.2f", futureStopPosError);
         //ImGui::Text("decelTrigger: %.2f", decelTrigger);
         //ImGui::Text("setpointTolerance: %.2f", setpointTolerance);
-        ImGui::Text("errorDirection: %d", errorDirection);
-        ImGui::Text("stopPosErrorDirection: %d", stopPosErrorDirection);
-        ImGui::Text("acceleration: %f", acceleration);
+        //ImGui::Text("errorDirection: %d", errorDirection);
+        //ImGui::Text("stopPosErrorDirection: %d", stopPosErrorDirection);
+        //ImGui::Text("acceleration: %f", acceleration);
     }
     else
     {
@@ -1765,7 +2181,32 @@ void Ramp(ramp_ts* ramp_s)
     }
 }
 
+// Example usage function
+void trajectory_example() {
+    TrajectoryCalculator calc;
 
+    // Initialize trajectory calculator
+    // maxVel=10, maxAccel=5, maxJerk=2, dt=0.01 (10ms)
+    trajectory_init(&calc, 10000.0, 1000.0, 5.0, 0.01);
+
+    // Set target position
+    trajectory_setTarget(&calc, 100.0);
+
+    // Simulation loop
+    for (int i = 0; i < 2000; i++) {
+        MotionProfile_ts profile = trajectory_calculateNextPoint(&calc);
+
+        // Print current state (or send to your motor controller)
+        printf("Step %d: Pos=%.3f, Vel=%.3f, Accel=%.3f, Decel=%d, Done=%d\n",
+            i, profile.position, profile.velocity, profile.acceleration,
+            profile.inDecelPhase, profile.targetReached);
+
+        if (profile.targetReached) {
+            printf("Target reached!\n");
+            break;
+        }
+    }
+}
 
 float MM7_C_YAW_RATE;
 float MM7_C_ROLL_RATE;
@@ -2482,7 +2923,7 @@ int main(int, char**)
                     static ramp_ts aux1Vals;
 
 
-                    static float maxVelocity = 1;
+                    static float maxVelocity = 10000;
                     static float maxAcceleration = 0;
                     static float maxJerk = 0;
 
@@ -2524,16 +2965,17 @@ int main(int, char**)
                     if (ImGui::Button("1000.0 unit/s^2"))
                         maxAcceleration = 1000.0f;
 
-                    if (limitVelocity)
+                    //if (limitVelocity)
                         ImGui::SliderFloat("##max velocity", &maxVelocity, 0, 100, "Max Velocity: %.1f units/s");
-                    if (limitAcceleration)
-                        ImGui::SliderFloat("##max acceleration", &maxAcceleration, -100, 100, "Max Acceleration: %.1f units/s2");
-                    if (limitJerk)
-                        ImGui::SliderFloat("##max jerk", &maxJerk, -5, 5, "Max Jerk: %.1f units/s3");
+                    //if (limitAcceleration)
+                        ImGui::SliderFloat("##max acceleration", &maxAcceleration, 0, 100, "Max Acceleration: %.1f units/s2");
+                    //if (limitJerk)
+                        ImGui::SliderFloat("##max jerk", &maxJerk, 0, 5, "Max Jerk: %.1f units/s3");
 
                     aux1Vals.inputVal = joystickVal;
                     aux1Vals.maxVelocity = maxVelocity;
                     aux1Vals.maxAccel = maxAcceleration;
+                    aux1Vals.maxJerk = maxJerk;
                     aux1Vals.dt = 1.0f / FRAME_RATE;// 0.016; // loop time
                     aux1Vals.outputMin = -100.0;
                     aux1Vals.outputMax = 100.0;
@@ -2542,7 +2984,12 @@ int main(int, char**)
                     aux1Vals.limitJerk = limitJerk;
 
                     Ramp(&aux1Vals);
-
+                    static bool firstLoop = true;
+                    if (firstLoop)
+                    {
+                        trajectory_example(); // TODO - RM: DELETE WHEN COMPLETE
+                        firstLoop = false;
+                    }
                     int output = aux1Vals.output;
                     ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(1.f, 0.f, 0.f));
 
