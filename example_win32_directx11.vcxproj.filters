@@ -73,6 +73,18 @@
     <Filter Include="Source Files\kinematics">
       <UniqueIdentifier>{3a63a34a-46c8-417e-87d5-78411b1111d7}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\motionController">
+      <UniqueIdentifier>{f3fb4de0-fa9f-431c-9d3d-7efed55e68df}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\motionController">
+      <UniqueIdentifier>{6e604e4b-3e5d-42a4-ba22-7b9be2dbc82e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\joystickHandling">
+      <UniqueIdentifier>{b21c1792-d5ba-47f0-b898-6eb17ff77ea7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\joystickHandling">
+      <UniqueIdentifier>{1da1ac80-7ef8-4362-8e10-f0fcb6f8d55d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -153,6 +165,15 @@
     <ClInclude Include="kinematics\fsc_iks.h">
       <Filter>Header Files\kinematics</Filter>
     </ClInclude>
+    <ClInclude Include="motionController\motionController_1D.h">
+      <Filter>Header Files\motionController</Filter>
+    </ClInclude>
+    <ClInclude Include="motionController\motionController_2D.h">
+      <Filter>Header Files\motionController</Filter>
+    </ClInclude>
+    <ClInclude Include="joystickHandling\joystickHandling.h">
+      <Filter>Header Files\joystickHandling</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -220,6 +241,15 @@
     </ClCompile>
     <ClCompile Include="kinematics\fsc_iks.cpp">
       <Filter>Source Files\kinematics</Filter>
+    </ClCompile>
+    <ClCompile Include="motionController\motionController_1D.c">
+      <Filter>Source Files\motionController</Filter>
+    </ClCompile>
+    <ClCompile Include="motionController\motionController_2D.c">
+      <Filter>Source Files\motionController</Filter>
+    </ClCompile>
+    <ClCompile Include="joystickHandling\joystickHandling.c">
+      <Filter>Source Files\joystickHandling</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -18,7 +18,9 @@
 #include "FABRIK2D.h"
 #include "fsc_iks.h"
 //#include "fsciks_dan.h"
-#include "sudoku.h"
+#include "sudoku.h" 
+#include "motionController_2D.h"
+#include "joystickHandling.h"
 
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
 #include "nfd.h"			//	https://github.com/mlabbe/nativefiledialog
@@ -1499,46 +1501,6 @@ typedef struct {
     double decelStartVel;
 } TrajectoryCalculator;
 
-// 2D Vector structure
-typedef struct {
-    double x;
-    double y;
-} Vector2D;
-
-// 2D Motion Profile
-typedef struct {
-    Vector2D position;
-    Vector2D velocity;
-    Vector2D acceleration;
-    Vector2D jerk;
-    bool inDecelPhase;
-    bool targetReached;
-    double vectorVelocity;      // Magnitude of velocity vector
-    double vectorAcceleration;  // Magnitude of acceleration vector
-    double vectorJerk;          // Magnitude of jerk vector
-} MotionProfile2D;
-
-// 2D Trajectory Calculator
-typedef struct {
-    // Individual axis calculators
-    TrajectoryCalculator xAxis;
-    TrajectoryCalculator yAxis;
-
-    // 2D limits (vector magnitudes)
-    double maxVectorVelocity;
-    double maxVectorAcceleration;
-    double maxVectorJerk;
-
-    // Current 2D state
-    Vector2D currentPos;
-    Vector2D currentVel;
-    Vector2D currentAccel;
-    Vector2D targetPos;
-
-    double dt;
-    bool coordinatedMotion;  // Whether to coordinate X/Y motion for straight lines
-} TrajectoryCalculator2D;
-
 // Helper function to clamp a value between min and max
 double clamp(double value, double min_val, double max_val) {
     if (value < min_val) return min_val;
@@ -1865,273 +1827,215 @@ void trajectory_setVelocityTolerance(TrajectoryCalculator* calc, double toleranc
     calc->velocityTolerance = tolerance;
 }
 
-double vector_magnitude(Vector2D v) {
+// Basic 2D vector structure
+typedef struct {
+    double x, y;
+} Vec2;
+
+// Motion constraints
+typedef struct {
+    double max_vel;          // Maximum velocity magnitude (units/sec)
+    double max_accel;        // Maximum acceleration magnitude (units/sec^2)
+    double position_tol;     // Position tolerance for "at target" (units)
+    double velocity_tol;     // Velocity tolerance for "settled" (units/sec)
+    double homing_distance;  // Distance at which to switch to homing mode (units)
+    double homing_gain;      // Proportional gain for final homing (typically < 1.0)
+} Constraints;
+
+// Motion states
+typedef enum {
+    STATE_ACCELERATING,
+    STATE_CRUISING,
+    STATE_DECELERATING,
+    STATE_HOMING,
+    STATE_SETTLED
+} MotionState_ts;
+
+// Current state of the mover
+typedef struct {
+    Vec2 pos;
+    Vec2 vel;
+    MotionState_ts motion_state;
+    int settled_count;       // Counter for debouncing settled state
+} State;
+
+// Helper function to compute magnitude of a vector
+double vec2_magnitude(Vec2 v) {
     return sqrt(v.x * v.x + v.y * v.y);
 }
 
-Vector2D vector_normalize(Vector2D v) {
-    double mag = vector_magnitude(v);
-    Vector2D result = { 0.0, 0.0 };
-    if (mag > 1e-6) {
-        result.x = v.x / mag;
-        result.y = v.y / mag;
+// Helper function to normalize a vector (make it unit length)
+Vec2 vec2_normalize(Vec2 v) {
+    double mag = vec2_magnitude(v);
+    if (mag > 0.0001) {
+        return Vec2{ v.x / mag, v.y / mag };
     }
-    return result;
+    return Vec2{ 0, 0 };
 }
 
-Vector2D vector_scale(Vector2D v, double scale) {
-    Vector2D result = { v.x * scale, v.y * scale };
-    return result;
+// Calculate stopping distance given current speed and max deceleration
+double calculate_stopping_distance(double current_speed, double max_accel) {
+    // Using: d = v^2 / (2*a)
+    return (current_speed * current_speed) / (2.0 * max_accel);
 }
 
-Vector2D vector_add(Vector2D a, Vector2D b) {
-    Vector2D result = { a.x + b.x, a.y + b.y };
-    return result;
+// Check if we're "at target"
+bool is_at_target(Vec2 pos, Vec2 target_pos, double tolerance) {
+    double dx = target_pos.x - pos.x;
+    double dy = target_pos.y - pos.y;
+    return (dx * dx + dy * dy) <= (tolerance * tolerance);
 }
 
-Vector2D vector_subtract(Vector2D a, Vector2D b) {
-    Vector2D result = { a.x - b.x, a.y - b.y };
-    return result;
+// Check if velocity is near zero
+bool is_stopped(Vec2 vel, double tolerance) {
+    return (vel.x * vel.x + vel.y * vel.y) <= (tolerance * tolerance);
 }
 
-// Forward declarations for 1D trajectory functions (you would include these from your library)
-//void trajectory_init(TrajectoryCalculator* calc, double maxVel, double maxAccel, double maxJerk, double timeStep);
-//void trajectory_setTarget(TrajectoryCalculator* calc, double target);
-//void trajectory_setCurrentState(TrajectoryCalculator* calc, double pos, double vel, double accel);
-//MotionProfile trajectory_calculateNextPoint(TrajectoryCalculator* calc);
-//void trajectory_setPositionTolerance(TrajectoryCalculator* calc, double tolerance);
-//void trajectory_setVelocityTolerance(TrajectoryCalculator* calc, double tolerance);
+// Main control function - computes acceleration command
+Vec2 compute_control(State* current, Vec2 target_pos, Vec2 target_vel,
+    Constraints* limits, double dt) {
 
-// Initialize 2D trajectory calculator
-// Initialize 2D trajectory calculator
-void trajectory2D_init(TrajectoryCalculator2D* calc, double maxVel, double maxAccel, double maxJerk, double timeStep) {
-    calc->maxVectorVelocity = maxVel;
-    calc->maxVectorAcceleration = maxAccel;
-    calc->maxVectorJerk = maxJerk;
-    calc->dt = timeStep;
-    calc->coordinatedMotion = true;  // Default to coordinated motion
+    // 1. Compute position error
+    Vec2 error = {
+        target_pos.x - current->pos.x,
+        target_pos.y - current->pos.y
+    };
 
-    // Initialize individual axis calculators with large limits
-    // We'll manage the vector limits separately
-    trajectory_init(&calc->xAxis, maxVel * 10.0, maxAccel * 10.0, maxJerk * 10.0, timeStep);
-    trajectory_init(&calc->yAxis, maxVel * 10.0, maxAccel * 10.0, maxJerk * 10.0, timeStep);
+    double error_mag = vec2_magnitude(error);
+    double current_speed = vec2_magnitude(current->vel);
 
-    // Initialize state
-    calc->currentPos.x = 0.0;
-    calc->currentPos.y = 0.0;
-    calc->currentVel.x = 0.0;
-    calc->currentVel.y = 0.0;
-    calc->currentAccel.x = 0.0;
-    calc->currentAccel.y = 0.0;
-    calc->targetPos.x = 0.0;
-    calc->targetPos.y = 0.0;
-}
+    // 2. State machine logic
+    bool at_target = is_at_target(current->pos, target_pos, limits->position_tol);
+    bool stopped = is_stopped(current->vel, limits->velocity_tol);
 
-// Set 2D target position
-void trajectory2D_setTarget(TrajectoryCalculator2D* calc, Vector2D target) {
-    calc->targetPos = target;
-    trajectory_setTarget(&calc->xAxis, target.x);
-    trajectory_setTarget(&calc->yAxis, target.y);
-}
-
-// Set current 2D state
-void trajectory2D_setCurrentState(TrajectoryCalculator2D* calc, Vector2D pos, Vector2D vel, Vector2D accel) {
-    calc->currentPos = pos;
-    calc->currentVel = vel;
-    calc->currentAccel = accel;
-
-    trajectory_setCurrentState(&calc->xAxis, pos.x, vel.x, accel.x);
-    trajectory_setCurrentState(&calc->yAxis, pos.y, vel.y, accel.y);
-}
-
-// Calculate scaling factor to respect vector limits
-double calculateVectorScaling(Vector2D desired, double maxMagnitude) {
-    double magnitude = vector_magnitude(desired);
-    if (magnitude > maxMagnitude && magnitude > 1e-6) {
-        return maxMagnitude / magnitude;
-    }
-    return 1.0;
-}
-
-// Main 2D trajectory calculation
-MotionProfile2D trajectory2D_calculateNextPoint(TrajectoryCalculator2D* calc) {
-    MotionProfile2D profile2D;
-
-    if (calc->coordinatedMotion) {
-        // Method 1: Coordinated motion - maintain straight line paths
-
-        // Calculate direction to target
-        Vector2D error = vector_subtract(calc->targetPos, calc->currentPos);
-        double distanceToTarget = vector_magnitude(error);
-
-        // Check if we're at target
-        if (distanceToTarget < 0.01 && vector_magnitude(calc->currentVel) < 0.01) {
-            profile2D.position = calc->targetPos;
-            profile2D.velocity.x = 0.0;
-            profile2D.velocity.y = 0.0;
-            profile2D.acceleration.x = 0.0;
-            profile2D.acceleration.y = 0.0;
-            profile2D.jerk.x = 0.0;
-            profile2D.jerk.y = 0.0;
-            profile2D.vectorVelocity = 0.0;
-            profile2D.vectorAcceleration = 0.0;
-            profile2D.vectorJerk = 0.0;
-            profile2D.inDecelPhase = false;
-            profile2D.targetReached = true;
-            return profile2D;
+    // Check for settled state
+    if (at_target && stopped) {
+        current->settled_count++;
+        if (current->settled_count > 5) {  // Debounce for 50ms at 10ms loop
+            current->motion_state = STATE_SETTLED;
         }
-
-        // Direction unit vector
-        Vector2D direction = vector_normalize(error);
-
-        // Determine if we should decelerate (simplified for coordinated motion)
-        double currentSpeed = vector_magnitude(calc->currentVel);
-        double stoppingDistance = (currentSpeed * currentSpeed) / (2.0 * calc->maxVectorAcceleration);
-        bool shouldDecelerate = (distanceToTarget <= stoppingDistance * 1.2);
-
-        Vector2D desiredAccel;
-        if (shouldDecelerate) {
-            // Decelerate toward target
-            if (distanceToTarget > 0.01) {
-                double decelMagnitude = (currentSpeed * currentSpeed) / (2.0 * distanceToTarget);
-                decelMagnitude = fmin(decelMagnitude, calc->maxVectorAcceleration);
-                desiredAccel = vector_scale(direction, -decelMagnitude);
-            }
-            else {
-                // Very close, stop quickly
-                desiredAccel = vector_scale(calc->currentVel, -1.0 / calc->dt);
-            }
-            profile2D.inDecelPhase = true;
-        }
-        else {
-            // Accelerate toward target
-            if (currentSpeed < calc->maxVectorVelocity) {
-                desiredAccel = vector_scale(direction, calc->maxVectorAcceleration);
-            }
-            else {
-                desiredAccel.x = 0.0;
-                desiredAccel.y = 0.0;
-            }
-            profile2D.inDecelPhase = false;
-        }
-
-        // Apply jerk limiting if enabled
-        if (calc->maxVectorJerk > 0) {
-            Vector2D accelChange = vector_subtract(desiredAccel, calc->currentAccel);
-            double jerkMagnitude = vector_magnitude(accelChange) / calc->dt;
-
-            if (jerkMagnitude > calc->maxVectorJerk) {
-                double jerkScale = calc->maxVectorJerk / jerkMagnitude;
-                accelChange = vector_scale(accelChange, jerkScale);
-                desiredAccel = vector_add(calc->currentAccel, accelChange);
-            }
-
-            profile2D.jerk = vector_scale(accelChange, 1.0 / calc->dt);
-            profile2D.vectorJerk = vector_magnitude(profile2D.jerk);
-        }
-        else {
-            profile2D.jerk.x = 0.0;
-            profile2D.jerk.y = 0.0;
-            profile2D.vectorJerk = 0.0;
-        }
-
-        // Limit acceleration magnitude
-        double accelScale = calculateVectorScaling(desiredAccel, calc->maxVectorAcceleration);
-        desiredAccel = vector_scale(desiredAccel, accelScale);
-
-        // Update position and velocity
-        Vector2D newVel = vector_add(calc->currentVel, vector_scale(desiredAccel, calc->dt));
-
-        // Limit velocity magnitude
-        double velScale = calculateVectorScaling(newVel, calc->maxVectorVelocity);
-        newVel = vector_scale(newVel, velScale);
-
-        Vector2D newPos = vector_add(calc->currentPos,
-            vector_add(vector_scale(calc->currentVel, calc->dt),
-                vector_scale(desiredAccel, 0.5 * calc->dt * calc->dt)));
-
-        // Update internal state
-        calc->currentPos = newPos;
-        calc->currentVel = newVel;
-        calc->currentAccel = desiredAccel;
-
-        // Fill output profile
-        profile2D.position = newPos;
-        profile2D.velocity = newVel;
-        profile2D.acceleration = desiredAccel;
-        profile2D.vectorVelocity = vector_magnitude(newVel);
-        profile2D.vectorAcceleration = vector_magnitude(desiredAccel);
-        profile2D.targetReached = (distanceToTarget < 0.01 && profile2D.vectorVelocity < 0.01);
-
     }
     else {
-        // Method 2: Independent axis motion - use 1D calculators
+        current->settled_count = 0;
 
-        // Calculate each axis independently
-        MotionProfile_ts xProfile = trajectory_calculateNextPoint(&calc->xAxis);
-        MotionProfile_ts yProfile = trajectory_calculateNextPoint(&calc->yAxis);
-
-        // Combine results
-        profile2D.position.x = xProfile.position;
-        profile2D.position.y = yProfile.position;
-        profile2D.velocity.x = xProfile.velocity;
-        profile2D.velocity.y = yProfile.velocity;
-        profile2D.acceleration.x = xProfile.acceleration;
-        profile2D.acceleration.y = yProfile.acceleration;
-        profile2D.jerk.x = xProfile.jerk;
-        profile2D.jerk.y = yProfile.jerk;
-
-        // Calculate vector magnitudes
-        profile2D.vectorVelocity = vector_magnitude(profile2D.velocity);
-        profile2D.vectorAcceleration = vector_magnitude(profile2D.acceleration);
-        profile2D.vectorJerk = vector_magnitude(profile2D.jerk);
-
-        // Apply vector limits by scaling if necessary
-        if (profile2D.vectorVelocity > calc->maxVectorVelocity) {
-            double scale = calc->maxVectorVelocity / profile2D.vectorVelocity;
-            profile2D.velocity = vector_scale(profile2D.velocity, scale);
-            profile2D.vectorVelocity = calc->maxVectorVelocity;
+        // Determine motion state
+        if (error_mag < limits->homing_distance) {
+            current->motion_state = STATE_HOMING;
         }
-
-        if (profile2D.vectorAcceleration > calc->maxVectorAcceleration) {
-            double scale = calc->maxVectorAcceleration / profile2D.vectorAcceleration;
-            profile2D.acceleration = vector_scale(profile2D.acceleration, scale);
-            profile2D.vectorAcceleration = calc->maxVectorAcceleration;
+        else {
+            double stop_dist = calculate_stopping_distance(current_speed, limits->max_accel);
+            if (error_mag <= stop_dist * 1.2) {
+                current->motion_state = STATE_DECELERATING;
+            }
+            else if (current_speed >= limits->max_vel * 0.95) {
+                current->motion_state = STATE_CRUISING;
+            }
+            else {
+                current->motion_state = STATE_ACCELERATING;
+            }
         }
-
-        if (profile2D.vectorJerk > calc->maxVectorJerk) {
-            double scale = calc->maxVectorJerk / profile2D.vectorJerk;
-            profile2D.jerk = vector_scale(profile2D.jerk, scale);
-            profile2D.vectorJerk = calc->maxVectorJerk;
-        }
-
-        // Update internal state
-        calc->currentPos = profile2D.position;
-        calc->currentVel = profile2D.velocity;
-        calc->currentAccel = profile2D.acceleration;
-
-        profile2D.inDecelPhase = xProfile.inDecelPhase || yProfile.inDecelPhase;
-        profile2D.targetReached = xProfile.targetReached && yProfile.targetReached;
     }
 
-    return profile2D;
+    // 3. Compute desired velocity based on state
+    Vec2 desired_vel = { 0, 0 };
+
+    switch (current->motion_state) {
+    case STATE_SETTLED:
+        // At target and settled - output zero
+        desired_vel.x = 0;
+        desired_vel.y = 0;
+        break;
+
+    case STATE_HOMING:
+        // Low-gain proportional control for final approach
+        desired_vel.x = error.x * limits->homing_gain;
+        desired_vel.y = error.y * limits->homing_gain;
+
+        // Add small feedforward from target velocity
+        desired_vel.x += target_vel.x * 0.1;
+        desired_vel.y += target_vel.y * 0.1;
+        break;
+
+    case STATE_DECELERATING: {
+        // Smooth deceleration to stop at target
+        Vec2 direction = vec2_normalize(error);
+        double desired_speed = sqrt(2.0 * limits->max_accel * error_mag * 0.9); // 90% for safety margin
+
+        if (desired_speed > limits->max_vel) {
+            desired_speed = limits->max_vel;
+        }
+
+        desired_vel.x = direction.x * desired_speed;
+        desired_vel.y = direction.y * desired_speed;
+        break;
+    }
+
+    case STATE_CRUISING:
+    case STATE_ACCELERATING: {
+        // Full speed toward target
+        Vec2 direction = vec2_normalize(error);
+        double desired_speed = limits->max_vel;
+
+        desired_vel.x = direction.x * desired_speed;
+        desired_vel.y = direction.y * desired_speed;
+
+        // Add target velocity feedforward
+        desired_vel.x += target_vel.x * 0.8;
+        desired_vel.y += target_vel.y * 0.8;
+        break;
+    }
+    }
+
+    // 4. Enforce velocity limits
+    double vel_mag = vec2_magnitude(desired_vel);
+    if (vel_mag > limits->max_vel) {
+        desired_vel.x = (desired_vel.x / vel_mag) * limits->max_vel;
+        desired_vel.y = (desired_vel.y / vel_mag) * limits->max_vel;
+    }
+
+    // 5. Compute required acceleration
+    Vec2 accel_cmd = {
+        (desired_vel.x - current->vel.x) / dt,
+        (desired_vel.y - current->vel.y) / dt
+    };
+
+    // 6. Apply acceleration limits (but be gentler in homing mode)
+    double accel_limit = (current->motion_state == STATE_HOMING) ?
+        limits->max_accel * 0.5 : limits->max_accel;
+
+    double accel_mag = vec2_magnitude(accel_cmd);
+    if (accel_mag > accel_limit) {
+        accel_cmd.x = (accel_cmd.x / accel_mag) * accel_limit;
+        accel_cmd.y = (accel_cmd.y / accel_mag) * accel_limit;
+    }
+
+    return accel_cmd;
 }
 
-// Set motion coordination mode
-void trajectory2D_setCoordinatedMotion(TrajectoryCalculator2D* calc, bool coordinated) {
-    calc->coordinatedMotion = coordinated;
+// Update state based on acceleration command
+void update_state(State* state, Vec2 accel_cmd, double dt) {
+    // Update velocity
+    state->vel.x += accel_cmd.x * dt;
+    state->vel.y += accel_cmd.y * dt;
+
+    // Update position
+    state->pos.x += state->vel.x * dt;
+    state->pos.y += state->vel.y * dt;
 }
 
-// Set tolerances
-void trajectory2D_setPositionTolerance(TrajectoryCalculator2D* calc, double tolerance) {
-    trajectory_setPositionTolerance(&calc->xAxis, tolerance);
-    trajectory_setPositionTolerance(&calc->yAxis, tolerance);
+// Get state name for debugging
+const char* get_state_name(MotionState_ts state) {
+    switch (state) {
+    case STATE_ACCELERATING: return "ACCELERATING";
+    case STATE_CRUISING: return "CRUISING";
+    case STATE_DECELERATING: return "DECELERATING";
+    case STATE_HOMING: return "HOMING";
+    case STATE_SETTLED: return "SETTLED";
+    default: return "UNKNOWN";
+    }
 }
 
-void trajectory2D_setVelocityTolerance(TrajectoryCalculator2D* calc, double tolerance) {
-    trajectory_setVelocityTolerance(&calc->xAxis, tolerance);
-    trajectory_setVelocityTolerance(&calc->yAxis, tolerance);
-}
+
 
 
 typedef struct
@@ -2197,7 +2101,7 @@ void Ramp(ramp_ts* ramp_s)
         static double unlimitedAccel;
         static double acceleration;
         static double currentVelocity;
-        static double error;
+        //static double error;
         static double stopPosError;
         static double maxP2;
         static double stopTimeGivenCurrentVelocity;
@@ -2493,7 +2397,7 @@ void Ramp(ramp_ts* ramp_s)
 typedef struct
 {
     // INPUTS
-    Vector2D inputVal;
+    Vec2 inputVal;
     double maxVelocity;
     double maxAccel;
     double maxDecel;
@@ -2505,7 +2409,7 @@ typedef struct
     bool limitJerk;
 
     // OUTPUTS
-    Vector2D output;
+    Vec2 output;
 
 } ramp2D_ts;
 
@@ -2551,7 +2455,7 @@ void Ramp2D(ramp2D_ts* ramp2D_s)
 
         static bool oneShot = false;
 
-        static TrajectoryCalculator2D calc2D;
+        //static TrajectoryCalculator2D calc2D;
         static bool initialized = false;
         if (ImGui::Button("Step Once"))
         {
@@ -2575,30 +2479,50 @@ void Ramp2D(ramp2D_ts* ramp2D_s)
             // Calculate current velocity and acceleration from setpoint history
             //double currentVelocity = (ramp_s->prevSetpoint - ramp_s->prevPrevSetpoint) / ramp_s->dt;
             //double currentAccel = (ramp_s->currentSetpoint - 2.0 * ramp_s->prevSetpoint + ramp_s->prevPrevSetpoint) / (ramp_s->dt * ramp_s->dt);
+            static State current;
+            static Vec2 target_vel;  // Stationary target
             if (!initialized)
             {
-                //trajectory_init(&calc, ramp_s->maxVelocity, ramp_s->maxAccel, ramp_s->maxJerk, ramp_s->dt);
-                trajectory2D_init(&calc2D, ramp2D_s->maxVelocity, ramp2D_s->maxAccel, ramp2D_s->maxJerk, ramp2D_s->dt);
-                trajectory2D_setPositionTolerance(&calc2D, 1.0);
-                trajectory2D_setVelocityTolerance(&calc2D, 1.0);
+                // Initialize state
+                current = {
+                    .pos = {0.0, 0.0},
+                    .vel = {0.0, 0.0},
+                    .motion_state = STATE_ACCELERATING,
+                    .settled_count = 0
+                };
+
+                target_vel = { 0.0, 0.0 };  // Stationary target
                 initialized = true;
             }
 
+            Vec2 target_pos = { ramp2D_s->inputVal.x, ramp2D_s->inputVal.y };
             // Set target position
-            trajectory2D_setTarget(&calc2D, ramp2D_s->inputVal);
+            //trajectory2D_setTarget(&calc2D, ramp2D_s->inputVal);
             //trajectory_setCurrentState(&calc, ramp_s->prevSetpoint, currentVelocity, currentAccel);
-            calc2D.maxVectorVelocity = ramp2D_s->maxVelocity;
-            calc2D.maxVectorAcceleration = ramp2D_s->maxAccel;
-            calc2D.maxVectorJerk = ramp2D_s->maxJerk;
-            MotionProfile2D profile = trajectory2D_calculateNextPoint(&calc2D);
+            Constraints limits = {
+                .max_vel = ramp2D_s->maxVelocity,
+                .max_accel = ramp2D_s->maxAccel,
+                .position_tol = 0.01,     // 0.01 units (1% of a unit)
+                .velocity_tol = 0.05,     // 0.05 units/sec
+                .homing_distance = 0.5,   // Switch to homing within 0.5 units
+                .homing_gain = 2.0        // P-gain for homing
+            };
+
+            Vec2 accel = compute_control(&current, target_pos, target_vel, &limits, ramp2D_s->dt);
+
+            // Update state
+            update_state(&current, accel, ramp2D_s->dt);
+            //MotionProfile2D profile = trajectory2D_calculateNextPoint(&calc2D);
 
 
-            ramp2D_s->output = profile.position;
-            ImGui::Text("Pos(%.2f,%.2f), Vel(%.2f,%.2f)|%.2f, Accel(%.2f,%.2f)|%.2f, Decel=%d, Done=%d\n",
-                profile.position.x, profile.position.y,
-                profile.velocity.x, profile.velocity.y, profile.vectorVelocity,
-                profile.acceleration.x, profile.acceleration.y, profile.vectorAcceleration,
-                profile.inDecelPhase, profile.targetReached);
+            ramp2D_s->output = Vec2(current.pos.x, current.pos.y);
+            double dist = sqrt(pow(target_pos.x - current.pos.x, 2) + pow(target_pos.y - current.pos.y, 2));
+            double speed = vec2_magnitude(current.vel);
+
+            ImGui::Text("pos: %.3f/%.3f, vel: %.3f/%.3f|%.3f, trgt: %.3f/%.3f, dist: %.3f\n",
+                current.pos.x, current.pos.y,
+                current.vel.x, current.vel.y, speed,
+                target_pos.x, target_pos.y, dist);
         }
     }
 
@@ -2638,34 +2562,73 @@ void trajectory_example() {
     //}
 }
 // Example usage function
-void trajectory2D_example() {
-    TrajectoryCalculator2D calc2D;
+void trajectory2D_example()
+{
+    // Initialize constraints
+    Constraints limits = {
+        .max_vel = 10.0,          // 10 units/sec
+        .max_accel = 5.0,         // 5 units/sec^2
+        .position_tol = 0.01,     // 0.01 units (1% of a unit)
+        .velocity_tol = 0.05,     // 0.05 units/sec
+        .homing_distance = 0.5,   // Switch to homing within 0.5 units
+        .homing_gain = 2.0        // P-gain for homing
+    };
 
-    // Initialize trajectory calculator
-    // maxVel=10, maxAccel=5, maxJerk=2, dt=0.01 (10ms)
-    trajectory2D_init(&calc2D, 1000.0, 100.0, 0.0, 0.01);
+    // Initialize state
+    State current = {
+        .pos = {0.0, 0.0},
+        .vel = {0.0, 0.0},
+        .motion_state = STATE_ACCELERATING,
+        .settled_count = 0
+    };
 
-    // Set target position
-    trajectory2D_setTarget(&calc2D, Vector2D(100.0, 100.0));
+    // Target
+    Vec2 target_pos = { 20.0, 15.0 };
+    Vec2 target_vel = { 0.0, 0.0 };  // Stationary target
 
-    // Simulation loop
-    for (int i = 0; i < 1000; i++)
-    {
-        MotionProfile2D profile = trajectory2D_calculateNextPoint(&calc2D);
+    // Simulation parameters
+    double dt = 0.01;  // 10ms
+    double time = 0.0;
 
-        // Print every 10 steps
-        if (i % 10 == 0 || profile.inDecelPhase || i < 20) {
-            printf("Step %d: Pos(%.2f,%.2f), Vel(%.2f,%.2f)|%.2f, Accel(%.2f,%.2f)|%.2f, Decel=%d, Done=%d\n",
-                i, profile.position.x, profile.position.y,
-                profile.velocity.x, profile.velocity.y, profile.vectorVelocity,
-                profile.acceleration.x, profile.acceleration.y, profile.vectorAcceleration,
-                profile.inDecelPhase, profile.targetReached);
+    printf("Time,PosX,PosY,VelX,VelY,Speed,TargetX,TargetY,Distance,State\n");
+
+    // Run simulation
+    for (int i = 0; i < 800; i++) {  // 8 seconds
+        // Get distance to target
+        double dist = sqrt(pow(target_pos.x - current.pos.x, 2) +
+            pow(target_pos.y - current.pos.y, 2));
+
+        // Compute control
+        Vec2 accel = compute_control(&current, target_pos, target_vel, &limits, dt);
+
+        // Update state
+        update_state(&current, accel, dt);
+
+        // Print state (every 10th iteration = 100ms)
+        if (i % 10 == 0) {
+            double speed = vec2_magnitude(current.vel);
+            printf("%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s\n",
+                time, current.pos.x, current.pos.y,
+                current.vel.x, current.vel.y, speed,
+                target_pos.x, target_pos.y, dist,
+                get_state_name(current.motion_state));
         }
 
-        if (profile.targetReached) {
-            printf("Target reached at step %d!\n", i);
-            break;
+        // Move target after 4 seconds to test tracking
+        if (i == 400) {
+            target_pos.x = 5.0;
+            target_pos.y = 25.0;
+            printf("# Target moved to (5, 25)\n");
         }
+
+        // Small target movement at 6 seconds to test settling
+        if (i == 600) {
+            target_pos.x = 5.2;
+            target_pos.y = 25.1;
+            printf("# Target nudged to (5.2, 25.1)\n");
+        }
+
+        time += dt;
     }
 }
 
@@ -4248,6 +4211,16 @@ int main(int, char**)
                         targetPosition = ImGui::GetMouseDragDelta(0, 0.0f);
                         targetPosition = ImVec2(targetPosition.x, -targetPosition.y); // invert y cause it's upside down in GUIs
                     }
+                    // If you have a controller hooked up, Press A and use the left joystick to control the "joystick" on screen :)
+                    else if (ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown))
+                    {
+                        ImVec2 gamePadJoystick = ImGui::GetKeyMagnitude2d(ImGuiKey_GamepadLStickLeft, ImGuiKey_GamepadLStickRight, ImGuiKey_GamepadLStickUp, ImGuiKey_GamepadLStickDown);
+                        targetPosition = ImVec2(gamePadJoystick.x * 100.0, -gamePadJoystick.y * 100.0);
+                    }
+                    else
+                    {
+                        targetPosition = ImVec2(0.0f, 0.0f);
+                    }
 
 
 
@@ -4327,22 +4300,92 @@ int main(int, char**)
                     static float maxVel = 0;
                     static float maxAccel = 0;
                     static float maxJerk = 0;
+                    static float posTolerance = 1.0;
 
                     ImGui::SliderFloat("max velocity", &maxVel, 0, 1000);
                     ImGui::SliderFloat("max acceleration", &maxAccel, 0, 1000);
-                    ImGui::SliderFloat("max jerk", &maxJerk, 0, 1000);
+                    //ImGui::SliderFloat("max jerk", &maxJerk, 0, 1000);
+                    ImGui::SliderFloat("position Tolerance", &posTolerance, 0.0, 1.0);
 
-                    ramp2D_ts ramp;
-                    ramp.dt = FRAME_RATE / 1000.0;
-                    ramp.inputVal = Vector2D(targetPosition.x, targetPosition.y);
-                    ramp.limitAccel = true;
-                    ramp.maxVelocity = maxVel;
-                    ramp.maxAccel = maxAccel;
-                    ramp.maxJerk = maxJerk;
+                    //ramp2D_ts ramp;
+                    //ramp.dt = 1.0 / FRAME_RATE;
+                    //ramp.inputVal = Vec2(targetPosition.x, targetPosition.y);
+                    //ramp.limitAccel = true;
+                    //ramp.maxVelocity = maxVel;
+                    //ramp.maxAccel = maxAccel;
+                    //ramp.maxJerk = maxJerk;
 
-                    Ramp2D(&ramp);
+                    //Ramp2D(&ramp);
+                    static joystk_handlr_ts joystick;
 
-                    targetPosition = ImVec2(ramp.output.x, ramp.output.y);
+
+
+                    static mc2D_state_t controller;
+                    mc2D_vec2_t start_pos = { 0.0, 0.0 };
+                    mc2D_vec2_t start_vel = { 0.0, 0.0 };
+
+                    /* Set up constraints */
+                    mc2D_constraints_t constraints = {
+                        .max_vel = maxVel,
+                        .max_accel = maxAccel,
+                        .position_tol = posTolerance,     // 0.01 units (1% of a unit)
+                        .velocity_tol = 0.05,     // 0.05 units/sec
+                        .homing_distance = 0.5,   // Switch to homing within 0.5 units
+                        .homing_gain = 2.0,        // P-gain for homing
+                        .settle_cycles = 5
+                    };
+
+                    static bool firstLoop = true;
+                    if (firstLoop)
+                    {
+                        firstLoop = false;
+                        // Initialize state
+                        controller = {
+                            .pos = {0.0, 0.0},
+                            .vel = {0.0, 0.0},
+                            .state = MC_STATE_ACCELERATING,
+                            .settled_count = 0
+                        };
+
+                        /* Configure joystick for safe operation */
+                        joystick.config.deadzone = 0.0;      /* 15% deadzone for worn joysticks */
+                        joystick.config.expo = 2.5;           /* Good balance of fine/coarse control */
+                        joystick.config.max_vel_scale = 0.3;  /* Start conservative at 30% speed */
+                        joystick.config.mode = JOY_MODE_VELOCITY;
+
+                        /* Initialize joystick controller */
+                        joy_init(&joystick, mc2D_vec2_t(0.0, 0.0));
+                        /* Set workspace limits (e.g., for a 200x200mm workspace) */
+                        mc2D_vec2_t workspace_min = { -100.0, -100.0 };
+                        mc2D_vec2_t workspace_max = { 100.0, 100.0 };
+                        joy_set_workspace_limits(&joystick, workspace_min, workspace_max);
+
+                        //target_vel = { 0.0, 0.0 };  // Stationary target
+                    }
+                    
+                    joy_input_ts joystk_input;
+                    joystk_input.x = targetPosition.x / 100.0;
+                    joystk_input.y = targetPosition.y / 100.0;
+                    joystk_input.enable = true;
+                    joy_update(&joystick, joystk_input, &constraints, 1.0 / FRAME_RATE);
+
+                    mc2D_vec2_t target_pos = joy_get_target_position(&joystick);
+                    mc2D_vec2_t target_vel = joy_get_target_velocity(&joystick);
+
+                    //mc2D_vec2_t target_pos = mc2D_vec2_t(targetPosition.x, targetPosition.y);
+                    //mc2D_vec2_t target_vel = { 0.0, 0.0 };  /* Stationary target */
+
+                    /* Compute control */
+                    mc2D_vec2_t accel = mc2D_compute_control(&controller, target_pos, target_vel,
+                        &constraints, 1.0 / FRAME_RATE);
+
+                    /* Update state */
+                    mc2D_update_state(&controller, accel, 1.0 / FRAME_RATE);
+
+                    ImVec2 motionTarget = ImVec2(controller.pos.x, controller.pos.y);
+                    //ImVec2 motionTarget = ImVec2(ramp.output.x, ramp.output.y);
+
+
                     Fsciks::Arm arm;
 
                     arm.joints[0].length = 0;
@@ -4360,8 +4403,8 @@ int main(int, char**)
                     arm.joints[0].x = 0.0f; // first joint is what we are considering the origin
                     arm.joints[0].y = 0.0f; // first joint is what we are considering the origin
 
-                    arm.joints[3].x = targetPosition.x;
-                    arm.joints[3].y = targetPosition.y;
+                    arm.joints[3].x = motionTarget.x;
+                    arm.joints[3].y = motionTarget.y;
 
                     arm.gripperAngle = toolAngle / RAD_TO_DEG;
 
@@ -4420,7 +4463,7 @@ int main(int, char**)
                     }
                     fsciks.precalcPolygonValues(arm.goZone); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    bool pointInBounds = fsciks.pointInPolygon(arm.goZone, startPos.x + targetPosition.x, startPos.y - targetPosition.y);
+                    bool pointInBounds = fsciks.pointInPolygon(arm.goZone, startPos.x + motionTarget.x, startPos.y - motionTarget.y);
 
                     ImVec4 colfInsideBounds = ImVec4(0.0f, 1.0f, 0.0f, 0.2f);
                     ImVec4 colfOutsideBounds = ImVec4(1.0f, 0.0f, 0.0f, 0.2f);
@@ -4428,8 +4471,15 @@ int main(int, char**)
                     draw_list->AddConcavePolyFilled(boundsPolygon, numPoints_polygon, boundsCol);
 
                     // text debugging
+                    ImGui::Text("pos=(%.3f, %.3f), speed=%.3f, state=%s\n",
+                        controller.pos.x, controller.pos.y,
+                        mc2D_get_speed(&controller),
+                        mc2D_get_state_name(controller.state));
                     ImGui::Text("ikReturn: %s", ikReturnText.c_str());
-                    ImGui::Text("X/Y Setpoint: %.2f/%.2f", targetPosition.x, targetPosition.y);
+                    ImGui::Text("X/Y Target: %.2f/%.2f", targetPosition.x, targetPosition.y);
+                    ImGui::Text("X/Y Setpoint: %.2f/%.2f", motionTarget.x, motionTarget.y);
+                    ImGui::Text("target_pos: %.2f/%.2f", target_pos.x, target_pos.y);
+                    ImGui::Text("target_vel: %.2f/%.2f", target_vel.x, target_vel.y);
                     ImGui::Text("angle0: %.2f°", fsciks.getAngle(arm, 0) * RAD_TO_DEG);
                     ImGui::SameLine();
                     ImGui::Text("angle1: %.2f°", fsciks.getAngle(arm, 1) * RAD_TO_DEG);
