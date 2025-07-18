@@ -4367,7 +4367,7 @@ int main(int, char**)
                     joystk_input.x = targetPosition.x / 100.0;
                     joystk_input.y = targetPosition.y / 100.0;
                     joystk_input.enable = true;
-                    joy_update(&joystick, joystk_input, &constraints, 1.0 / FRAME_RATE);
+                    joy_update(&joystick, joystk_input, controller.pos, controller.vel, &constraints, 1.0 / FRAME_RATE);
 
                     mc2D_vec2_t target_pos = joy_get_target_position(&joystick);
                     mc2D_vec2_t target_vel = joy_get_target_velocity(&joystick);

@@ -55,6 +55,7 @@ extern "C" {
         mc2D_vec2_t home_position;      /**< Home/center position */
         mc2D_vec2_t current_target;     /**< Current target position */
         mc2D_vec2_t target_velocity;    /**< Target velocity (for feedforward) */
+        mc2D_vec2_t actual_position;    /**< Actual system position (for leash mode) */
         joy_config_ts config;          /**< Configuration parameters */
         bool is_active;               /**< Controller active state */
         double time_since_enable;     /**< Time since last enabled (for ramping) */
@@ -97,6 +98,8 @@ extern "C" {
      */
     void joy_update(joystk_handlr_ts* joy,
         joy_input_ts input,
+        mc2D_vec2_t actual_pos,
+        mc2D_vec2_t actual_vel,
         const mc2D_constraints_t* constraints,
         double dt);
 
@@ -154,4 +157,4 @@ extern "C" {
 }
 #endif
 
-#endif /* JOYSTICK_CONTROL_H */
+#endif /* JOYSTICK_HANDLING_H */

@@ -16,6 +16,7 @@ static double smooth_ramp(double time, double ramp_duration);
 void joy_init(joystk_handlr_ts* joy, mc2D_vec2_t home_pos) {
     joy->home_position = home_pos;
     joy->current_target = home_pos;
+    joy->actual_position = home_pos;
     joy->target_velocity.x = 0.0;
     joy->target_velocity.y = 0.0;
     joy->is_active = false;
@@ -59,8 +60,12 @@ void joy_set_workspace_limits(joystk_handlr_ts* joy, mc2D_vec2_t min, mc2D_vec2_
 
 void joy_update(joystk_handlr_ts* joy,
     joy_input_ts input,
+    mc2D_vec2_t actual_pos,
+    mc2D_vec2_t actual_vel,
     const mc2D_constraints_t* constraints,
     double dt) {
+
+    joy->actual_position = actual_pos;
 
     /* Handle enable/disable transitions */
     if (!input.enable) {
@@ -99,40 +104,88 @@ void joy_update(joystk_handlr_ts* joy,
     /* Process based on control mode */
     if (joy->config.mode == JOY_MODE_VELOCITY) {
         /* Velocity Control Mode */
-        /* Map joystick to velocity */
-        joy->target_velocity.x = x_processed * constraints->max_vel * joy->config.max_vel_scale;
-        joy->target_velocity.y = y_processed * constraints->max_vel * joy->config.max_vel_scale;
 
-        /* Integrate velocity to get position */
-        joy->current_target.x += joy->target_velocity.x * dt;
-        joy->current_target.y += joy->target_velocity.y * dt;
+        /* Map joystick to desired velocity */
+        mc2D_vec2_t commanded_vel;
+        commanded_vel.x = x_processed * constraints->max_vel * joy->config.max_vel_scale;
+        commanded_vel.y = y_processed * constraints->max_vel * joy->config.max_vel_scale;
 
+        /* Calculate commanded speed */
+        double commanded_speed = sqrt(commanded_vel.x * commanded_vel.x +
+            commanded_vel.y * commanded_vel.y);
+
+        if (commanded_speed > 0.01) {
+            /* Joystick active - integrate velocity to update position */
+            joy->current_target.x += commanded_vel.x * dt;
+            joy->current_target.y += commanded_vel.y * dt;
+
+            /* Update target velocity for feedforward */
+            joy->target_velocity = commanded_vel;
+
+            /* Limit how far ahead target can get */
+            double dx = joy->current_target.x - actual_pos.x;
+            double dy = joy->current_target.y - actual_pos.y;
+            double distance = sqrt(dx * dx + dy * dy);
+            double max_distance = 20.0; /* Maximum target lead distance */
+
+            if (distance > max_distance) {
+                /* Target too far ahead - constrain it */
+                joy->current_target.x = actual_pos.x + (dx / distance) * max_distance;
+                joy->current_target.y = actual_pos.y + (dy / distance) * max_distance;
+            }
+        }
+        else {
+            /* Joystick at neutral - calculate proper stopping position */
+
+            /* Only update stopping position when first releasing joystick */
+            if (fabs(joy->target_velocity.x) > 0.01 || fabs(joy->target_velocity.y) > 0.01) {
+                /* Use ACTUAL velocity for accurate stopping distance */
+                double speed = sqrt(actual_vel.x * actual_vel.x + actual_vel.y * actual_vel.y);
+
+                if (speed > 0.1) {
+                    /* Calculate exact stopping distance */
+                    double stop_distance = (speed * speed) / (2.0 * constraints->max_accel);
+
+                    /* Place target at stopping position */
+                    joy->current_target.x = actual_pos.x + (actual_vel.x / speed) * stop_distance;
+                    joy->current_target.y = actual_pos.y + (actual_vel.y / speed) * stop_distance;
+                }
+                else {
+                    joy->current_target = actual_pos;
+                }
+            }
+
+            /* Clear commanded velocity */
+            joy->target_velocity.x = 0.0;
+            joy->target_velocity.y = 0.0;
+        }
     }
     else {
-        /* Position Control Mode */
-        /* Map joystick to position offset from home */
-        mc2D_vec2_t desired_target = {
-            joy->home_position.x + x_processed * joy->config.position_scale,
-            joy->home_position.y + y_processed * joy->config.position_scale
-        };
+        /* Joystick at neutral - IMMEDIATE DECELERATION */
 
-        /* Smooth transition to new target position */
-        double smooth_factor = 1.0 - exp(-5.0 * dt); /* Time constant ~200ms */
-        joy->current_target.x += (desired_target.x - joy->current_target.x) * smooth_factor;
-        joy->current_target.y += (desired_target.y - joy->current_target.y) * smooth_factor;
+        /* Check if we just transitioned to neutral (velocity was non-zero last frame) */
+        if (fabs(joy->target_velocity.x) > 0.01 || fabs(joy->target_velocity.y) > 0.01) {
+            /* Just released joystick - calculate stop position ONCE */
+            double vel_x = joy->target_velocity.x;
+            double vel_y = joy->target_velocity.y;
+            double current_speed = sqrt(vel_x * vel_x + vel_y * vel_y);
 
-        /* Calculate velocity for feedforward (helps motion controller) */
-        joy->target_velocity.x = (desired_target.x - joy->current_target.x) / 0.2; /* 200ms lookahead */
-        joy->target_velocity.y = (desired_target.y - joy->current_target.y) / 0.2;
+            /* Calculate stopping distance: d = v²/(2a) */
+            double stop_distance = (current_speed * current_speed) / (2.0 * constraints->max_accel);
+            stop_distance = stop_distance * 0.7 + 1.0;
 
-        /* Limit feedforward velocity */
-        double vel_mag = sqrt(joy->target_velocity.x * joy->target_velocity.x +
-            joy->target_velocity.y * joy->target_velocity.y);
-        double max_ff_vel = constraints->max_vel * joy->config.max_vel_scale;
-        if (vel_mag > max_ff_vel) {
-            joy->target_velocity.x = (joy->target_velocity.x / vel_mag) * max_ff_vel;
-            joy->target_velocity.y = (joy->target_velocity.y / vel_mag) * max_ff_vel;
+            /* Set target at stopping position */
+            double vx_norm = vel_x / current_speed;
+            double vy_norm = vel_y / current_speed;
+
+            joy->current_target.x = actual_pos.x + vx_norm * stop_distance;
+            joy->current_target.y = actual_pos.y + vy_norm * stop_distance;
         }
+        /* else: target position remains where it was set - no drift! */
+
+        /* Clear target velocity */
+        joy->target_velocity.x = 0.0;
+        joy->target_velocity.y = 0.0;
     }
 
     /* Apply workspace limits if enabled */
@@ -168,6 +221,7 @@ void joy_reset_to_home(joystk_handlr_ts* joy) {
 
 void joy_sync_to_position(joystk_handlr_ts* joy, mc2D_vec2_t current_pos) {
     joy->current_target = current_pos;
+    joy->actual_position = current_pos;
     joy->target_velocity.x = 0.0;
     joy->target_velocity.y = 0.0;
     /* Don't reset time_since_enable to maintain smooth control */
