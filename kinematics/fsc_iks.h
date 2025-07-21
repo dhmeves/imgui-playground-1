@@ -110,7 +110,7 @@ public:
 
     bool check_arm_angle(Arm arm, unsigned int joint);
     bool check_arm_angles(Arm arm);
-    IK_CONVERGENCE_E validate_and_constrain_target(Arm arm, mc2D_vec2_t* target, float angle_buffer);
+    IK_CONVERGENCE_E validate_and_constrain_target(Arm arm, mc2D_vec2_t* target, float angle_buffer, bool enforceAngleConstraints);
 
 private:
     float  constant[NUM_POLYGON_CORNERS]; //storage for precalculated constants

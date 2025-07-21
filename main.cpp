@@ -4255,12 +4255,12 @@ int main(int, char**)
                     //fabrik2D.solve(inverseKinematics.x, inverseKinematics.y, toolAngle / RAD_TO_DEG, lengths);
                     //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(0), startPos.y - fabrik2D.getY(0)), ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), col, th);
                     //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(1), startPos.y - fabrik2D.getY(1)), ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), col, th);
-                    
+
                     //draw_list->AddLine(ImVec2(startPos.x + fabrik2D.getX(2), startPos.y - fabrik2D.getY(2)), ImVec2(startPos.x + fabrik2D.getX(3), startPos.y - fabrik2D.getY(3)), col2, th);
                     //*0 if FABRIK could not converge
                     //    * 1 if FABRIK converged to the set threshold
                     //    * 2 if FABRIK converged with a higher tolerance value
-                    
+
 
 
 
@@ -4301,11 +4301,13 @@ int main(int, char**)
                     static float maxAccel = 130.0f;
                     static float maxJerk = 0;
                     static float posTolerance = 1.0;
+                    static bool constrainAngles = false;
 
                     ImGui::SliderFloat("max velocity", &maxVel, 0, 1000);
                     ImGui::SliderFloat("max acceleration", &maxAccel, 0, 1000);
                     //ImGui::SliderFloat("max jerk", &maxJerk, 0, 1000);
                     ImGui::SliderFloat("position Tolerance", &posTolerance, 0.0, 1.0);
+                    ImGui::Checkbox("Constrain Angles", &constrainAngles);
 
                     //ramp2D_ts ramp;
                     //ramp.dt = 1.0 / FRAME_RATE;
@@ -4362,7 +4364,7 @@ int main(int, char**)
 
                         //target_vel = { 0.0, 0.0 };  // Stationary target
                     }
-                    
+
                     joy_input_ts joystk_input;
                     joystk_input.x = targetPosition.x / 100.0;
                     joystk_input.y = targetPosition.y / 100.0;
@@ -4413,11 +4415,11 @@ int main(int, char**)
                     mc2D_vec2_t target = mc2D_vec2_t(motionTarget.x, motionTarget.y);
                     mc2D_vec2_t original_target = target;
                     float angleConstraintTolerance = 0.5f;
-                    IK_CONVERGENCE_E ik_result = fsciks.validate_and_constrain_target(arm, &target, angleConstraintTolerance);
+
+                    IK_CONVERGENCE_E ik_result = fsciks.validate_and_constrain_target(arm, &target, angleConstraintTolerance, constrainAngles);
 
                     // If target was modified, sync joystick to prevent runaway
-                    if (fabs(target.x - original_target.x) > 0.001 ||
-                        fabs(target.y - original_target.y) > 0.001)
+                    if (fabs(target.x - original_target.x) > 0.001 || fabs(target.y - original_target.y) > 0.001)
                     {
                         joy_sync_to_position(&joystick, target);
                     }
