@@ -38,23 +38,28 @@ typedef struct {
     float acceleration;
 } MotionState;
 
-typedef struct {
-    float j_max;
-    float a_max;
-    float v_max;
-    float total_time;
-    float t[7]; // t[0] to t[6] are duration of the 7 S-curve phases
-} ScurveProfile;
-
-typedef struct {
-    float current_time;
-    float dt;
-    MotionState state;
-    ScurveProfile profile;
-    float direction;
-} ScurveGenerator;
+//typedef struct {
+//    float j_max;
+//    float a_max;
+//    float v_max;
+//    float total_time;
+//    float t[7]; // t[0] to t[6] are duration of the 7 S-curve phases
+//} ScurveProfile;
+//
+//typedef struct {
+//    float current_time;
+//    float dt;
+//    MotionState state;
+//    ScurveProfile profile;
+//    float direction;
+//} ScurveGenerator;
 
 const int NUM_LINKS = 3;
+
+typedef struct {
+    bool at_limit[NUM_LINKS];      // Which joints are at their limits
+    float limit_direction[NUM_LINKS]; // -1 for min limit, +1 for max limit, 0 for safe
+} joint_limit_state_t;
 
 //void scurve_step(ScurveGenerator* gen);
 //void compute_scurve_profile(ScurveProfile* p, float distance, float j_max, float a_max, float v_max);
@@ -110,7 +115,7 @@ public:
 
     bool check_arm_angle(Arm arm, unsigned int joint);
     bool check_arm_angles(Arm arm);
-    IK_CONVERGENCE_E validate_and_constrain_target(Arm arm, mc2D_vec2_t* target, float angle_buffer, bool enforceAngleConstraints);
+    IK_CONVERGENCE_E validate_and_constrain_target_with_decel(Arm arm, mc2D_vec2_t* target, mc2D_vec2_t current_pos, mc2D_vec2_t current_vel, mc2D_constraints_t* motion_limits, joint_limit_state_t* limit_state);
 
 private:
     float  constant[NUM_POLYGON_CORNERS]; //storage for precalculated constants

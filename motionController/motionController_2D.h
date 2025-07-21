@@ -124,6 +124,12 @@ double mc2D_get_distance_to_target(const mc2D_state_t* state, mc2D_vec2_t target
     */
 double mc2D_get_speed(const mc2D_state_t* state);
 
+double vec2_magnitude(mc2D_vec2_t v);
+mc2D_vec2_t vec2_normalize(mc2D_vec2_t v);
+double calculate_stopping_distance(double current_speed, double max_accel);
+bool is_at_target(mc2D_vec2_t pos, mc2D_vec2_t target_pos, double tolerance);
+bool is_stopped(mc2D_vec2_t vel, double tolerance);
+
 #ifdef __cplusplus
 }
 #endif

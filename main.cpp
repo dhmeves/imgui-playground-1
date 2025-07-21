@@ -1859,158 +1859,25 @@ typedef struct {
     int settled_count;       // Counter for debouncing settled state
 } State;
 
-// Helper function to compute magnitude of a vector
-double vec2_magnitude(Vec2 v) {
-    return sqrt(v.x * v.x + v.y * v.y);
-}
-
-// Helper function to normalize a vector (make it unit length)
-Vec2 vec2_normalize(Vec2 v) {
-    double mag = vec2_magnitude(v);
-    if (mag > 0.0001) {
-        return Vec2{ v.x / mag, v.y / mag };
-    }
-    return Vec2{ 0, 0 };
-}
-
 // Calculate stopping distance given current speed and max deceleration
-double calculate_stopping_distance(double current_speed, double max_accel) {
-    // Using: d = v^2 / (2*a)
-    return (current_speed * current_speed) / (2.0 * max_accel);
-}
+//double calculate_stopping_distance(double current_speed, double max_accel) {
+//    // Using: d = v^2 / (2*a)
+//    return (current_speed * current_speed) / (2.0 * max_accel);
+//}
 
 // Check if we're "at target"
-bool is_at_target(Vec2 pos, Vec2 target_pos, double tolerance) {
-    double dx = target_pos.x - pos.x;
-    double dy = target_pos.y - pos.y;
-    return (dx * dx + dy * dy) <= (tolerance * tolerance);
-}
+//bool is_at_target(Vec2 pos, Vec2 target_pos, double tolerance) {
+//    double dx = target_pos.x - pos.x;
+//    double dy = target_pos.y - pos.y;
+//    return (dx * dx + dy * dy) <= (tolerance * tolerance);
+//}
 
 // Check if velocity is near zero
-bool is_stopped(Vec2 vel, double tolerance) {
-    return (vel.x * vel.x + vel.y * vel.y) <= (tolerance * tolerance);
-}
+//bool is_stopped(Vec2 vel, double tolerance) {
+//    return (vel.x * vel.x + vel.y * vel.y) <= (tolerance * tolerance);
+//}
 
-// Main control function - computes acceleration command
-Vec2 compute_control(State* current, Vec2 target_pos, Vec2 target_vel,
-    Constraints* limits, double dt) {
 
-    // 1. Compute position error
-    Vec2 error = {
-        target_pos.x - current->pos.x,
-        target_pos.y - current->pos.y
-    };
-
-    double error_mag = vec2_magnitude(error);
-    double current_speed = vec2_magnitude(current->vel);
-
-    // 2. State machine logic
-    bool at_target = is_at_target(current->pos, target_pos, limits->position_tol);
-    bool stopped = is_stopped(current->vel, limits->velocity_tol);
-
-    // Check for settled state
-    if (at_target && stopped) {
-        current->settled_count++;
-        if (current->settled_count > 5) {  // Debounce for 50ms at 10ms loop
-            current->motion_state = STATE_SETTLED;
-        }
-    }
-    else {
-        current->settled_count = 0;
-
-        // Determine motion state
-        if (error_mag < limits->homing_distance) {
-            current->motion_state = STATE_HOMING;
-        }
-        else {
-            double stop_dist = calculate_stopping_distance(current_speed, limits->max_accel);
-            if (error_mag <= stop_dist * 1.2) {
-                current->motion_state = STATE_DECELERATING;
-            }
-            else if (current_speed >= limits->max_vel * 0.95) {
-                current->motion_state = STATE_CRUISING;
-            }
-            else {
-                current->motion_state = STATE_ACCELERATING;
-            }
-        }
-    }
-
-    // 3. Compute desired velocity based on state
-    Vec2 desired_vel = { 0, 0 };
-
-    switch (current->motion_state) {
-    case STATE_SETTLED:
-        // At target and settled - output zero
-        desired_vel.x = 0;
-        desired_vel.y = 0;
-        break;
-
-    case STATE_HOMING:
-        // Low-gain proportional control for final approach
-        desired_vel.x = error.x * limits->homing_gain;
-        desired_vel.y = error.y * limits->homing_gain;
-
-        // Add small feedforward from target velocity
-        desired_vel.x += target_vel.x * 0.1;
-        desired_vel.y += target_vel.y * 0.1;
-        break;
-
-    case STATE_DECELERATING: {
-        // Smooth deceleration to stop at target
-        Vec2 direction = vec2_normalize(error);
-        double desired_speed = sqrt(2.0 * limits->max_accel * error_mag * 0.9); // 90% for safety margin
-
-        if (desired_speed > limits->max_vel) {
-            desired_speed = limits->max_vel;
-        }
-
-        desired_vel.x = direction.x * desired_speed;
-        desired_vel.y = direction.y * desired_speed;
-        break;
-    }
-
-    case STATE_CRUISING:
-    case STATE_ACCELERATING: {
-        // Full speed toward target
-        Vec2 direction = vec2_normalize(error);
-        double desired_speed = limits->max_vel;
-
-        desired_vel.x = direction.x * desired_speed;
-        desired_vel.y = direction.y * desired_speed;
-
-        // Add target velocity feedforward
-        desired_vel.x += target_vel.x * 0.8;
-        desired_vel.y += target_vel.y * 0.8;
-        break;
-    }
-    }
-
-    // 4. Enforce velocity limits
-    double vel_mag = vec2_magnitude(desired_vel);
-    if (vel_mag > limits->max_vel) {
-        desired_vel.x = (desired_vel.x / vel_mag) * limits->max_vel;
-        desired_vel.y = (desired_vel.y / vel_mag) * limits->max_vel;
-    }
-
-    // 5. Compute required acceleration
-    Vec2 accel_cmd = {
-        (desired_vel.x - current->vel.x) / dt,
-        (desired_vel.y - current->vel.y) / dt
-    };
-
-    // 6. Apply acceleration limits (but be gentler in homing mode)
-    double accel_limit = (current->motion_state == STATE_HOMING) ?
-        limits->max_accel * 0.5 : limits->max_accel;
-
-    double accel_mag = vec2_magnitude(accel_cmd);
-    if (accel_mag > accel_limit) {
-        accel_cmd.x = (accel_cmd.x / accel_mag) * accel_limit;
-        accel_cmd.y = (accel_cmd.y / accel_mag) * accel_limit;
-    }
-
-    return accel_cmd;
-}
 
 // Update state based on acceleration command
 void update_state(State* state, Vec2 accel_cmd, double dt) {
@@ -2508,21 +2375,21 @@ void Ramp2D(ramp2D_ts* ramp2D_s)
                 .homing_gain = 2.0        // P-gain for homing
             };
 
-            Vec2 accel = compute_control(&current, target_pos, target_vel, &limits, ramp2D_s->dt);
+            //Vec2 accel = compute_control(&current, target_pos, target_vel, &limits, ramp2D_s->dt);
 
-            // Update state
-            update_state(&current, accel, ramp2D_s->dt);
-            //MotionProfile2D profile = trajectory2D_calculateNextPoint(&calc2D);
+            //// Update state
+            //update_state(&current, accel, ramp2D_s->dt);
+            ////MotionProfile2D profile = trajectory2D_calculateNextPoint(&calc2D);
 
 
-            ramp2D_s->output = Vec2(current.pos.x, current.pos.y);
-            double dist = sqrt(pow(target_pos.x - current.pos.x, 2) + pow(target_pos.y - current.pos.y, 2));
-            double speed = vec2_magnitude(current.vel);
+            //ramp2D_s->output = Vec2(current.pos.x, current.pos.y);
+            //double dist = sqrt(pow(target_pos.x - current.pos.x, 2) + pow(target_pos.y - current.pos.y, 2));
+            //double speed = vec2_magnitude(current.vel);
 
-            ImGui::Text("pos: %.3f/%.3f, vel: %.3f/%.3f|%.3f, trgt: %.3f/%.3f, dist: %.3f\n",
-                current.pos.x, current.pos.y,
-                current.vel.x, current.vel.y, speed,
-                target_pos.x, target_pos.y, dist);
+            //ImGui::Text("pos: %.3f/%.3f, vel: %.3f/%.3f|%.3f, trgt: %.3f/%.3f, dist: %.3f\n",
+            //    current.pos.x, current.pos.y,
+            //    current.vel.x, current.vel.y, speed,
+            //    target_pos.x, target_pos.y, dist);
         }
     }
 
@@ -2599,19 +2466,19 @@ void trajectory2D_example()
             pow(target_pos.y - current.pos.y, 2));
 
         // Compute control
-        Vec2 accel = compute_control(&current, target_pos, target_vel, &limits, dt);
+        //Vec2 accel = compute_control(&current, target_pos, target_vel, &limits, dt);
 
         // Update state
-        update_state(&current, accel, dt);
+        //update_state(&current, accel, dt);
 
         // Print state (every 10th iteration = 100ms)
         if (i % 10 == 0) {
-            double speed = vec2_magnitude(current.vel);
-            printf("%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s\n",
-                time, current.pos.x, current.pos.y,
-                current.vel.x, current.vel.y, speed,
-                target_pos.x, target_pos.y, dist,
-                get_state_name(current.motion_state));
+            //double speed = vec2_magnitude(current.vel);
+            //printf("%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s\n",
+            //    time, current.pos.x, current.pos.y,
+            //    current.vel.x, current.vel.y, speed,
+            //    target_pos.x, target_pos.y, dist,
+            //    get_state_name(current.motion_state));
         }
 
         // Move target after 4 seconds to test tracking
@@ -4378,11 +4245,8 @@ int main(int, char**)
                     //mc2D_vec2_t target_vel = { 0.0, 0.0 };  /* Stationary target */
 
                     /* Compute control */
-                    mc2D_vec2_t accel = mc2D_compute_control(&controller, target_pos, target_vel,
-                        &constraints, 1.0 / FRAME_RATE);
+                    //mc2D_vec2_t accel = mc2D_compute_control(&controller, target_pos, target_vel, &constraints, 1.0 / FRAME_RATE);
 
-                    /* Update state */
-                    mc2D_update_state(&controller, accel, 1.0 / FRAME_RATE);
 
                     ImVec2 motionTarget = ImVec2(controller.pos.x, controller.pos.y);
                     //ImVec2 motionTarget = ImVec2(ramp.output.x, ramp.output.y);
@@ -4416,7 +4280,26 @@ int main(int, char**)
                     mc2D_vec2_t original_target = target;
                     float angleConstraintTolerance = 0.5f;
 
-                    IK_CONVERGENCE_E ik_result = fsciks.validate_and_constrain_target(arm, &target, angleConstraintTolerance, constrainAngles);
+                    // Track limit state
+                    static joint_limit_state_t limit_state = { 0 };
+
+                    // Check if any joints are near limits
+                    bool near_limits = false;
+                    for (int i = 0; i < NUM_LINKS; i++) {
+                        if (limit_state.at_limit[i]) {
+                            near_limits = true;
+                            break;
+                        }
+                    }
+
+                    // Reduce speed near limits for smooth deceleration
+                    mc2D_constraints_t dynamic_constraints = constraints;
+                    if (near_limits) {
+                        dynamic_constraints.max_vel *= 0.3;    // Slow down to 30%
+                        dynamic_constraints.max_accel *= 0.5;  // Gentler acceleration
+                    }
+
+                    IK_CONVERGENCE_E ik_result = fsciks.validate_and_constrain_target_with_decel(arm, &target, target_pos, target_vel, &dynamic_constraints, &limit_state);
 
                     // If target was modified, sync joystick to prevent runaway
                     if (fabs(target.x - original_target.x) > 0.001 || fabs(target.y - original_target.y) > 0.001)
@@ -4430,6 +4313,20 @@ int main(int, char**)
                         target_pos.y = arm.joints[3].y;
                         joy_sync_to_position(&joystick, target_pos);
                     }
+
+                    // If target was constrained, sync joystick
+                    mc2D_vec2_t temp = { target_pos.x - original_target.x, target_pos.y - original_target.y };
+                    if (sqrt(temp.x * temp.x + temp.y * temp.y) > 0.1)
+                    {
+                        joy_sync_to_position(&joystick, target_pos);
+                    }
+
+                    /* Compute control */
+                    mc2D_vec2_t accel = mc2D_compute_control(&controller, target_pos, target_vel, &dynamic_constraints, 1.0 / FRAME_RATE);
+
+                    /* Update state */
+                    mc2D_update_state(&controller, accel, 1.0 / FRAME_RATE);
+
                     arm.joints[3].x = target.x;
                     arm.joints[3].y = target.y;
 

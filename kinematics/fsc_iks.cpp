@@ -181,9 +181,51 @@ bool Fsciks::check_arm_angles(Arm arm)
     return true;
 }
 
-// Modified motion control with IK validation
-IK_CONVERGENCE_E Fsciks::validate_and_constrain_target(Arm arm, mc2D_vec2_t* target, float angle_buffer, bool enforceAngleConstraints)
+
+IK_CONVERGENCE_E Fsciks::validate_and_constrain_target_with_decel(
+    Arm arm,
+    mc2D_vec2_t* target,
+    mc2D_vec2_t current_pos,
+    mc2D_vec2_t current_vel,
+    mc2D_constraints_t* motion_limits,
+    joint_limit_state_t* limit_state)
 {
+
+    // First, check current arm state
+    Arm current_arm = arm;
+    joint_limit_state_t new_limit_state = { 0 };
+
+    // Check each joint's current angle and proximity to limits
+    for (int i = 0; i < NUM_LINKS; i++)
+    {
+        float angle = getAngle(current_arm, i) * RAD_TO_DEG;
+        //while (angle > M_PI) angle -= 2 * M_PI;
+        //while (angle < -M_PI) angle += 2 * M_PI;
+        float min_limit = (arm.joints[i].angularConstraint.min_angle < arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle; //	Find min/max values incase someone gave us parameters in the wrong order
+        float max_limit = (arm.joints[i].angularConstraint.min_angle > arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle;
+        //float min_limit = arm_limits->limits[i].min_angle;
+        //float max_limit = arm_limits->limits[i].max_angle;
+
+        // Calculate stopping angle based on current angular velocity
+        // Estimate angular velocity from cartesian velocity (simplified)
+        float angular_vel_estimate = vec2_magnitude(current_vel) / arm.joints[i].length;
+        float stopping_angle = RAD_TO_DEG * (angular_vel_estimate * angular_vel_estimate) / (2.0 * motion_limits->max_accel / arm.joints[i].length);
+
+        // Add safety margin
+        float safety_buffer = 2.0f; // ~2 degrees
+        float decel_buffer = stopping_angle + safety_buffer;
+
+        // Check proximity to limits
+        if (angle <= min_limit + decel_buffer) {
+            new_limit_state.at_limit[i] = true;
+            new_limit_state.limit_direction[i] = -1;
+        }
+        else if (angle >= max_limit - decel_buffer) {
+            new_limit_state.at_limit[i] = true;
+            new_limit_state.limit_direction[i] = 1;
+        }
+    }
+
     // Try the target position
     Arm test_arm = arm;
     test_arm.joints[3].x = target->x;
@@ -191,103 +233,135 @@ IK_CONVERGENCE_E Fsciks::validate_and_constrain_target(Arm arm, mc2D_vec2_t* tar
     //test_arm.gripperAngle = gripper_angle;
 
     IK_CONVERGENCE_E result = calcArm(&test_arm);
-
-    if (result != CONVERGES)
-    {
+    if (result != CONVERGES) {
         return result;
     }
 
-    // Check joint angles with buffer
-    bool angles_valid = true;
-    bool near_limit = false;
+    // Check if target would violate constraints or make them worse
+    bool target_valid = true;
+    bool improving = false;
 
-    if (enforceAngleConstraints)
-    {
-        for (int i = 0; i < NUM_LINKS; i++) {
-            float angle = getAngle(test_arm, i) * RAD_TO_DEG;
+    for (int i = 0; i < NUM_LINKS; i++) {
+        float current_angle = getAngle(current_arm, i) * RAD_TO_DEG;
+        float new_angle = getAngle(test_arm, i) * RAD_TO_DEG;
 
-            // Normalize angle to [-π, π]
-            //while (angle > M_PI) angle -= 2 * M_PI;
-            //while (angle < -M_PI) angle += 2 * M_PI;
+        // Normalize
+        //while (current_angle > M_PI) current_angle -= 2 * M_PI;
+        //while (current_angle < -M_PI) current_angle += 2 * M_PI;
+        //while (new_angle > M_PI) new_angle -= 2 * M_PI;
+        //while (new_angle < -M_PI) new_angle += 2 * M_PI;
 
-            float min_limit = (arm.joints[i].angularConstraint.min_angle < arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle;
-            float max_limit = (arm.joints[i].angularConstraint.min_angle > arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle;
+        float min_limit = (arm.joints[i].angularConstraint.min_angle < arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle; //	Find min/max values incase someone gave us parameters in the wrong order
+        float max_limit = (arm.joints[i].angularConstraint.min_angle > arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle;
+        //float min_limit = arm_limits->limits[i].min_angle;
+        //float max_limit = arm_limits->limits[i].max_angle;
 
-            // Check if we're outside limits
-            if (angle < min_limit || angle > max_limit) {
-                angles_valid = false;
+        // Check if we're outside limits
+        if (current_angle < min_limit || current_angle > max_limit) {
+            // We're in violation - check if target improves situation
+            if ((current_angle < min_limit && new_angle > current_angle) ||
+                (current_angle > max_limit && new_angle < current_angle)) {
+                improving = true;
+            }
+            else {
+                target_valid = false;
                 break;
             }
-
-            // Check if we're within buffer zone of limits
-            if (angle < min_limit + angle_buffer ||
-                angle > max_limit - angle_buffer) {
-                near_limit = true;
-            }
         }
 
-        if (angles_valid && !near_limit) {
-            // Safe zone - allow free movement
-            return CONVERGES;
-        }
+        // If at limit, check movement direction
+        if (new_limit_state.at_limit[i])
+        {
+            float angle_change = new_angle - current_angle;
 
-        if (!angles_valid) {
-            // Already outside limits - pull back to last valid position
-            mc2D_vec2_t current = { arm.joints[3].x, arm.joints[3].y };
-            *target = current;  // Stay at current position
-            return CONVERGES;
-        }
-
-        // We're in the buffer zone - allow movement away from limit only
-        // Check if movement would take us further into limit
-        mc2D_vec2_t current = { arm.joints[3].x, arm.joints[3].y };
-        mc2D_vec2_t movement = {
-            target->x - current.x,
-            target->y - current.y
-        };
-
-        // Test a small step in the movement direction
-        test_arm = arm;
-        test_arm.joints[3].x = current.x + movement.x * 0.1;
-        test_arm.joints[3].y = current.y + movement.y * 0.1;
-
-        if (calcArm(&test_arm) == CONVERGES) {
-            // Check if this movement makes angles worse
-            bool getting_worse = false;
-            for (int i = 0; i < NUM_LINKS; i++) {
-                float current_angle = getAngle(arm, i) * RAD_TO_DEG;
-                float new_angle = getAngle(test_arm, i) * RAD_TO_DEG;
-
-                // Normalize
-                //while (current_angle > M_PI) current_angle -= 2 * M_PI;
-                //while (current_angle < -M_PI) current_angle += 2 * M_PI;
-                //while (new_angle > M_PI) new_angle -= 2 * M_PI;
-                //while (new_angle < -M_PI) new_angle += 2 * M_PI;
-
-                //float min_limit = arm_limits->limits[i].min_angle;
-                //float max_limit = arm_limits->limits[i].max_angle;
-
-                float min_limit = (arm.joints[i].angularConstraint.min_angle < arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle;
-                float max_limit = (arm.joints[i].angularConstraint.min_angle > arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle;
-
-                // Check if we're moving toward a limit
-                if (current_angle < min_limit + angle_buffer && new_angle < current_angle) {
-                    getting_worse = true;
-                    break;
-                }
-                if (current_angle > max_limit - angle_buffer && new_angle > current_angle) {
-                    getting_worse = true;
-                    break;
-                }
-            }
-
-            if (getting_worse) {
-                // Don't allow movement toward limit
-                *target = current;
+            // Don't allow movement further into limit
+            if ((new_limit_state.limit_direction[i] < 0 && angle_change < -0.001) ||
+                (new_limit_state.limit_direction[i] > 0 && angle_change > 0.001)) {
+                target_valid = false;
+                break;
             }
         }
     }
 
+    // Handle different cases
+    if (target_valid || improving) {
+        *limit_state = new_limit_state;
+        return CONVERGES;
+    }
+
+    // Target would violate constraints - find safe target
+    // Use gradient descent to find nearest valid position
+    mc2D_vec2_t safe_target = current_pos;
+    mc2D_vec2_t search_dir = {
+        target->x - current_pos.x,
+        target->y - current_pos.y
+    };
+
+    // If we're against a limit, modify search direction to move away
+    if (target_valid == false) {
+        // Binary search for valid position, but bias toward escaping limits
+        float t = 0.5;
+        float t_step = 0.25;
+
+        for (int iter = 0; iter < 8; iter++) {
+            test_arm = arm;
+            test_arm.joints[3].x = current_pos.x + t * search_dir.x;
+            test_arm.joints[3].y = current_pos.y + t * search_dir.y;
+
+            if (calcArm(&test_arm) == CONVERGES) {
+                bool valid = true;
+                bool escaping = false;
+
+                for (int i = 0; i < NUM_LINKS; i++) {
+                    float test_angle = getAngle(test_arm, i);
+                    float curr_angle = getAngle(current_arm, i);
+
+                    // Normalize
+                    //while (test_angle > M_PI) test_angle -= 2 * M_PI;
+                    //while (test_angle < -M_PI) test_angle += 2 * M_PI;
+                    //while (curr_angle > M_PI) curr_angle -= 2 * M_PI;
+                    //while (curr_angle < -M_PI) curr_angle += 2 * M_PI;
+
+                    float min_limit = (arm.joints[i].angularConstraint.min_angle < arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle; //	Find min/max values incase someone gave us parameters in the wrong order
+                    float max_limit = (arm.joints[i].angularConstraint.min_angle > arm.joints[i].angularConstraint.max_angle) ? arm.joints[i].angularConstraint.min_angle : arm.joints[i].angularConstraint.max_angle;
+                    // Check if escaping violation
+                    if ((curr_angle < min_limit && test_angle > curr_angle) ||
+                        (curr_angle > max_limit && test_angle < curr_angle))
+                    {
+                        escaping = true;
+                    }
+
+                    // Check if movement is safe
+                    if (new_limit_state.at_limit[i])
+                    {
+                        float delta = test_angle - curr_angle;
+                        if ((new_limit_state.limit_direction[i] < 0 && delta < -0.001) ||
+                            (new_limit_state.limit_direction[i] > 0 && delta > 0.001)) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (valid || escaping) {
+                    safe_target.x = test_arm.joints[3].x;
+                    safe_target.y = test_arm.joints[3].y;
+                    t += t_step;
+                }
+                else {
+                    t -= t_step;
+                }
+            }
+            else {
+                t -= t_step;
+            }
+            t_step *= 0.5;
+            t = fmax(0.0, fmin(1.0, t));
+        }
+    }
+
+    *target = safe_target;
+    *limit_state = new_limit_state;
     return CONVERGES;
 }
 

@@ -7,11 +7,11 @@
 #include <math.h>
 
  /* Helper internal function prototypes */
-static double vec2_magnitude(mc2D_vec2_t v);
-static mc2D_vec2_t vec2_normalize(mc2D_vec2_t v);
-static double calculate_stopping_distance(double current_speed, double max_accel);
-static bool is_at_target(mc2D_vec2_t pos, mc2D_vec2_t target_pos, double tolerance);
-static bool is_stopped(mc2D_vec2_t vel, double tolerance);
+//double vec2_magnitude(mc2D_vec2_t v);
+//mc2D_vec2_t vec2_normalize(mc2D_vec2_t v);
+//double calculate_stopping_distance(double current_speed, double max_accel);
+//bool is_at_target(mc2D_vec2_t pos, mc2D_vec2_t target_pos, double tolerance);
+//bool is_stopped(mc2D_vec2_t vel, double tolerance);
 
 /* Public API Implementation */
 
@@ -192,11 +192,11 @@ double mc2D_get_speed(const mc2D_state_t* state) {
 
 /* Private helper functions */
 
-static double vec2_magnitude(mc2D_vec2_t v) {
+double vec2_magnitude(mc2D_vec2_t v) {
     return sqrt(v.x * v.x + v.y * v.y);
 }
 
-static mc2D_vec2_t vec2_normalize(mc2D_vec2_t v) {
+mc2D_vec2_t vec2_normalize(mc2D_vec2_t v) {
     double mag = vec2_magnitude(v);
     if (mag > 0.0001) {
         mc2D_vec2_t result = { v.x / mag, v.y / mag };
@@ -206,16 +206,16 @@ static mc2D_vec2_t vec2_normalize(mc2D_vec2_t v) {
     return zero;
 }
 
-static double calculate_stopping_distance(double current_speed, double max_accel) {
+double calculate_stopping_distance(double current_speed, double max_accel) {
     return (current_speed * current_speed) / (2.0 * max_accel);
 }
 
-static bool is_at_target(mc2D_vec2_t pos, mc2D_vec2_t target_pos, double tolerance) {
+bool is_at_target(mc2D_vec2_t pos, mc2D_vec2_t target_pos, double tolerance) {
     double dx = target_pos.x - pos.x;
     double dy = target_pos.y - pos.y;
     return (dx * dx + dy * dy) <= (tolerance * tolerance);
 }
 
-static bool is_stopped(mc2D_vec2_t vel, double tolerance) {
+bool is_stopped(mc2D_vec2_t vel, double tolerance) {
     return (vel.x * vel.x + vel.y * vel.y) <= (tolerance * tolerance);
 }
