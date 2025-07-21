@@ -4297,8 +4297,8 @@ int main(int, char**)
                     update_motion(&toolSetpointY);
                     toolSetpointY.last_update = toolSetpointY.current_value;
 
-                    static float maxVel = 0;
-                    static float maxAccel = 0;
+                    static float maxVel = 80.0f;
+                    static float maxAccel = 130.0f;
                     static float maxJerk = 0;
                     static float posTolerance = 1.0;
 
@@ -4341,7 +4341,7 @@ int main(int, char**)
                         firstLoop = false;
                         // Initialize state
                         controller = {
-                            .pos = {0.0, 0.0},
+                            .pos = {73.0, 10.0},
                             .vel = {0.0, 0.0},
                             .state = MC_STATE_ACCELERATING,
                             .settled_count = 0
@@ -4400,15 +4400,41 @@ int main(int, char**)
                     arm.joints[2].angularConstraint.min_angle = -35.14;
                     arm.joints[2].angularConstraint.max_angle = 92.03;
 
+                    //arm.joints[0].angularConstraint.min_angle = -180.0f; // all angle constraints are confirmed via solidworks
+                    //arm.joints[0].angularConstraint.max_angle = 180.0f;
+                    //arm.joints[1].angularConstraint.min_angle = -180.0f;
+                    //arm.joints[1].angularConstraint.max_angle = 180.0f;
+                    //arm.joints[2].angularConstraint.min_angle = - 180.0f;
+                    //arm.joints[2].angularConstraint.max_angle = 180.0f;
+
                     arm.joints[0].x = 0.0f; // first joint is what we are considering the origin
                     arm.joints[0].y = 0.0f; // first joint is what we are considering the origin
 
-                    arm.joints[3].x = motionTarget.x;
-                    arm.joints[3].y = motionTarget.y;
+                    mc2D_vec2_t target = mc2D_vec2_t(motionTarget.x, motionTarget.y);
+                    mc2D_vec2_t original_target = target;
+                    float angleConstraintTolerance = 0.5f;
+                    IK_CONVERGENCE_E ik_result = fsciks.validate_and_constrain_target(arm, &target, angleConstraintTolerance);
+
+                    // If target was modified, sync joystick to prevent runaway
+                    if (fabs(target.x - original_target.x) > 0.001 ||
+                        fabs(target.y - original_target.y) > 0.001)
+                    {
+                        joy_sync_to_position(&joystick, target);
+                    }
+
+                    if (ik_result != CONVERGES) {
+                        // Can't reach target - stop at current position
+                        target_pos.x = arm.joints[3].x;
+                        target_pos.y = arm.joints[3].y;
+                        joy_sync_to_position(&joystick, target_pos);
+                    }
+                    arm.joints[3].x = target.x;
+                    arm.joints[3].y = target.y;
 
                     arm.gripperAngle = toolAngle / RAD_TO_DEG;
 
                     fsciks.fsciks_init(&arm);
+
                     IK_CONVERGENCE_E p2Converges = fsciks.calcP2(&arm);
                     IK_CONVERGENCE_E p1Converges = fsciks.calcP1(&arm);
 
@@ -4458,16 +4484,30 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        arm.goZone.x[i] = boundsPolygon[i].x;
-                        arm.goZone.y[i] = boundsPolygon[i].y;
+                        arm.goZone.pnt[i].x = boundsPolygon[i].x;
+                        arm.goZone.pnt[i].y = boundsPolygon[i].y;
                     }
                     fsciks.precalcPolygonValues(arm.goZone); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
-
-                    bool pointInBounds = fsciks.pointInPolygon(arm.goZone, startPos.x + motionTarget.x, startPos.y - motionTarget.y);
+                    
+                    bool pointInBounds = fsciks.pointInPolygon(arm.goZone, numPoints_polygon, point_ts(startPos.x + motionTarget.x, startPos.y - motionTarget.y));
+                    float distanceToEdge = fsciks.distance_to_polygon(arm.goZone, numPoints_polygon, point_ts(startPos.x + motionTarget.x, startPos.y - motionTarget.y));
 
                     ImVec4 colfInsideBounds = ImVec4(0.0f, 1.0f, 0.0f, 0.2f);
+                    ImVec4 colfNearBounds = ImVec4(1.0f, 0.3f, 0.0f, 0.2f);
                     ImVec4 colfOutsideBounds = ImVec4(1.0f, 0.0f, 0.0f, 0.2f);
-                    ImU32 boundsCol = pointInBounds ? ImColor(colfInsideBounds) : ImColor(colfOutsideBounds);
+                    ImU32 boundsCol;// = pointInBounds ? ImColor(colfInsideBounds) : ImColor(colfOutsideBounds);
+                    if (distanceToEdge > 0.0f)
+                    {
+                        boundsCol = ImColor(colfOutsideBounds);
+                    }
+                    else if (distanceToEdge > -5.0f) // turn yellow when we're near the bounds edge - could also affect max velocity/accel??
+                    {
+                        boundsCol = ImColor(colfNearBounds);
+                    }
+                    else
+                    {
+                        boundsCol = ImColor(colfInsideBounds);
+                    }
                     draw_list->AddConcavePolyFilled(boundsPolygon, numPoints_polygon, boundsCol);
 
                     // text debugging
@@ -4478,13 +4518,14 @@ int main(int, char**)
                     ImGui::Text("ikReturn: %s", ikReturnText.c_str());
                     ImGui::Text("X/Y Target: %.2f/%.2f", targetPosition.x, targetPosition.y);
                     ImGui::Text("X/Y Setpoint: %.2f/%.2f", motionTarget.x, motionTarget.y);
+                    ImGui::Text("X/Y Setpoint (joint constrainted): %.2f/%.2f", target.x, target.y);
                     ImGui::Text("target_pos: %.2f/%.2f", target_pos.x, target_pos.y);
                     ImGui::Text("target_vel: %.2f/%.2f", target_vel.x, target_vel.y);
-                    ImGui::Text("angle0: %.2f°", fsciks.getAngle(arm, 0) * RAD_TO_DEG);
-                    ImGui::SameLine();
-                    ImGui::Text("angle1: %.2f°", fsciks.getAngle(arm, 1) * RAD_TO_DEG);
-                    ImGui::SameLine();
-                    ImGui::Text("angle2: %.2f°", fsciks.getAngle(arm, 2) * RAD_TO_DEG);
+                    //ImGui::SameLine();
+                    ImGui::Text("angle0: %.2f° | %s, [%.2f|%.2f]", fsciks.getAngle(arm, 0) * RAD_TO_DEG, fsciks.check_arm_angle(arm, 0) ? "angles good" : "angles not good", arm.joints[0].angularConstraint.min_angle, arm.joints[0].angularConstraint.max_angle);
+                    ImGui::Text("angle1: %.2f° | %s, [%.2f|%.2f]", fsciks.getAngle(arm, 1) * RAD_TO_DEG, fsciks.check_arm_angle(arm, 1) ? "angles good" : "angles not good", arm.joints[1].angularConstraint.min_angle, arm.joints[1].angularConstraint.max_angle);
+                    ImGui::Text("angle2: %.2f° | %s, [%.2f|%.2f]", fsciks.getAngle(arm, 2) * RAD_TO_DEG, fsciks.check_arm_angle(arm, 2) ? "angles good" : "angles not good", arm.joints[2].angularConstraint.min_angle, arm.joints[2].angularConstraint.max_angle);
+                    //ImGui::SameLine();
                     ImGui::Text("POS0: %.2f/%.2f", arm.joints[0].x, arm.joints[0].y);
                     ImGui::SameLine();
                     ImGui::Text("POS1: %.2f/%.2f", arm.joints[1].x, arm.joints[1].y);
@@ -4494,26 +4535,6 @@ int main(int, char**)
                     ImGui::Text("POS3: %.2f/%.2f", arm.joints[3].x, arm.joints[3].y);
 
                     ImGui::Text("End-effector joint is %s shape", pointInBounds ? "inside" : "outside");
-
-                    float start = 0.0f;
-                    float end = 10.0f;
-                    float dt = 0.016f;
-
-                    static ScurveGenerator gen = {
-                        .current_time = 0.0f,
-                        .dt = dt,
-                        .state = {0},
-                        .direction = (end - start > 0.0f) ? 1.0f : -1.0f
-                    };
-
-                    float distance = fabsf(end - start);
-                    compute_scurve_profile(&gen.profile, distance, 10.0f, 5.0f, 3.0f);
-
-                    //while (gen.current_time < gen.profile.total_time + dt) {}
-
-                    scurve_step(&gen);
-                    float pos = start + gen.state.position * gen.direction;
-                    ImGui::Text("t=%.2f pos=%.3f vel=%.3f acc=%.3f\n", gen.current_time, pos, gen.state.velocity * gen.direction, gen.state.acceleration * gen.direction);
                 }
                 ImGui::End();
             }
@@ -4565,15 +4586,14 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        polygon1.x[i] = complexPolygon[i].x;
-                        polygon1.y[i] = complexPolygon[i].y;
+                        polygon1.pnt[i].x = complexPolygon[i].x;
+                        polygon1.pnt[i].y = complexPolygon[i].y;
                     }
                     fsciks.precalcPolygonValues(polygon1); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    bool pointInPolygon = fsciks.pointInPolygon(polygon1, ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                    bool pointInPolygon = fsciks.pointInPolygon(polygon1, numPoints_polygon, point_ts(ImGui::GetMousePos().x, ImGui::GetMousePos().y));
+                    float distanceToEdge = fsciks.distance_to_polygon(polygon1, numPoints_polygon, point_ts(ImGui::GetMousePos().x, ImGui::GetMousePos().y));
 
-                    //ImGui::Text("Cursor: %f/%f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-                    //pointInPolygon ? ImGui::Text("INSIDE") : ImGui::Text("OUTSIDE");
 
                     draw_list->AddConcavePolyFilled(complexPolygon, numPoints_polygon, col);
 
@@ -4602,15 +4622,21 @@ int main(int, char**)
 
                     for (int i = 0; i < numPoints_polygon; i++)
                     {
-                        polygon2.x[i] = complexPolygon[i].x;
-                        polygon2.y[i] = complexPolygon[i].y;
+                        polygon2.pnt[i].x = complexPolygon[i].x;
+                        polygon2.pnt[i].y = complexPolygon[i].y;
                     }
                     fsciks.precalcPolygonValues(polygon2); // ideally this is ran once, but since I want to keep the complexPolygon inside the scope of this window it'll re-calc every time.
 
-                    pointInPolygon |= fsciks.pointInPolygon(polygon2, ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                    pointInPolygon |= fsciks.pointInPolygon(polygon2, numPoints_polygon, point_ts(ImGui::GetMousePos().x, ImGui::GetMousePos().y));
+                    float distanceToEdge2 = fsciks.distance_to_polygon(polygon2, numPoints_polygon, point_ts(ImGui::GetMousePos().x, ImGui::GetMousePos().y));
+
+                    float minDistance = (distanceToEdge > distanceToEdge2) ? distanceToEdge2 : distanceToEdge;
 
                     ImGui::Text("Cursor: %.0f/%.0f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
                     ImGui::Text("Cursor is %s shape", pointInPolygon ? "inside" : "outside");
+                    ImGui::Text("Cursor is %.0f away from edge", minDistance);
+                    ImGui::Text("Cursor is %.0f away from poly1", distanceToEdge);
+                    ImGui::Text("Cursor is %.0f away from poly2", distanceToEdge2);
 
                     draw_list->AddConcavePolyFilled(complexPolygon, numPoints_polygon, col);
                 }

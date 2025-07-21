@@ -7,6 +7,7 @@
 #include <random>
 #include <chrono>
 #include "TimersAndCalculations.h"
+#include "motionController_2D.h"
 
 const int NUM_POLYGON_CORNERS = 20;// how many corners the polygon has
 
@@ -20,10 +21,15 @@ typedef struct FSCIKS_T
 {
 } fsciks_ts;
 
+typedef struct point_ts
+{
+    float x;
+    float y;
+};
+
 typedef struct polygon_ts
 {
-    float x[NUM_POLYGON_CORNERS];
-    float y[NUM_POLYGON_CORNERS];
+    point_ts pnt[NUM_POLYGON_CORNERS];
 };
 
 typedef struct {
@@ -50,8 +56,8 @@ typedef struct {
 
 const int NUM_LINKS = 3;
 
-void scurve_step(ScurveGenerator* gen);
-void compute_scurve_profile(ScurveProfile* p, float distance, float j_max, float a_max, float v_max);
+//void scurve_step(ScurveGenerator* gen);
+//void compute_scurve_profile(ScurveProfile* p, float distance, float j_max, float a_max, float v_max);
 
 class Fsciks
 {
@@ -96,8 +102,15 @@ public:
     float getAngle(Arm arm, unsigned int joint);
 
     void precalcPolygonValues(polygon_ts polygon);
-    bool pointInPolygon(polygon_ts polygon, float x, float y);
+    bool pointInPolygon(polygon_ts polygon, int num_points, point_ts p);
 
+    float dist2(point_ts a, point_ts b);
+    float point_to_segment_distance(point_ts p, point_ts v, point_ts w);
+    float distance_to_polygon(polygon_ts polygon, int num_points, point_ts p);
+
+    bool check_arm_angle(Arm arm, unsigned int joint);
+    bool check_arm_angles(Arm arm);
+    IK_CONVERGENCE_E validate_and_constrain_target(Arm arm, mc2D_vec2_t* target, float angle_buffer);
 
 private:
     float  constant[NUM_POLYGON_CORNERS]; //storage for precalculated constants
