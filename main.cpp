@@ -4190,7 +4190,7 @@ int main(int, char**)
 
 
                     static mc2D_state_t controller;
-                    mc2D_vec2_t start_pos = { 0.0, 0.0 };
+                    mc2D_vec2_t start_pos = { 73.0, 10.0 };
                     mc2D_vec2_t start_vel = { 0.0, 0.0 };
 
                     /* Set up constraints */
@@ -4223,7 +4223,7 @@ int main(int, char**)
                         joystick.config.mode = JOY_MODE_VELOCITY;
 
                         /* Initialize joystick controller */
-                        joy_init(&joystick, mc2D_vec2_t(0.0, 0.0));
+                        joy_init(&joystick, mc2D_vec2_t(73.0, 10.0));
                         /* Set workspace limits (e.g., for a 200x200mm workspace) */
                         mc2D_vec2_t workspace_min = { -100.0, -100.0 };
                         mc2D_vec2_t workspace_max = { 100.0, 100.0 };
@@ -4241,6 +4241,7 @@ int main(int, char**)
                     mc2D_vec2_t target_pos = joy_get_target_position(&joystick);
                     mc2D_vec2_t target_vel = joy_get_target_velocity(&joystick);
 
+                    static mc2D_vec2_t prevTarget_Pos = target_pos;
                     //mc2D_vec2_t target_pos = mc2D_vec2_t(targetPosition.x, targetPosition.y);
                     //mc2D_vec2_t target_vel = { 0.0, 0.0 };  /* Stationary target */
 
@@ -4299,26 +4300,80 @@ int main(int, char**)
                         dynamic_constraints.max_accel *= 0.5;  // Gentler acceleration
                     }
 
-                    IK_CONVERGENCE_E ik_result = fsciks.validate_and_constrain_target_with_decel(arm, &target, target_pos, target_vel, &dynamic_constraints, &limit_state);
-
-                    // If target was modified, sync joystick to prevent runaway
-                    if (fabs(target.x - original_target.x) > 0.001 || fabs(target.y - original_target.y) > 0.001)
+                    Fsciks::Arm tempArm = arm;
+                    tempArm.joints[3].x = target_pos.x;
+                    tempArm.joints[3].y = target_pos.y;
+                    if (fsciks.calcArm(&tempArm) != CONVERGES || !fsciks.check_arm_angles(tempArm)) // if we don't converge or comply with angular constraints, use previous position
                     {
-                        joy_sync_to_position(&joystick, target);
-                    }
+                        controller.pos.x = arm.joints[3].x;
+                        controller.pos.y = arm.joints[3].y;
+                        controller.vel = (mc2D_vec2_t)(0.0f, 0.0f);
+                        controller.state = MC_STATE_ACCELERATING;
+                        controller.settled_count = 0;
 
-                    if (ik_result != CONVERGES) {
-                        // Can't reach target - stop at current position
                         target_pos.x = arm.joints[3].x;
                         target_pos.y = arm.joints[3].y;
-                        joy_sync_to_position(&joystick, target_pos);
+                        //joy_init(&joystick, (mc2D_vec2_t)(arm.joints[3].x, arm.joints[3].y));
+                        joy_sync_to_position(&joystick, (mc2D_vec2_t)(arm.joints[3].x, arm.joints[3].y));
+                        //controller.pos = prevTarget_Pos;
+                        //controller.vel = (mc2D_vec2_t)(0.0f, 0.0f);
+                        //controller.state = MC_STATE_ACCELERATING;
+                        //controller.settled_count = 0;
+
+                        //arm.joints[3].x = prevTarget_Pos.x;
+                        //arm.joints[3].y = prevTarget_Pos.y;
+                        //joy_init(&joystick, prevTarget_Pos);
+                        //joy_sync_to_position(&joystick, prevTarget_Pos);
                     }
+                    else
+                    {
+                        arm.joints[3].x = target_pos.x;
+                        arm.joints[3].y = target_pos.y;
+                    }
+
+                    IK_CONVERGENCE_E ik_result = CONVERGES;// fsciks.validate_and_constrain_target_with_decel(arm, &target, target_pos, target_vel, &dynamic_constraints, &limit_state); //  TODO - RM: LET'S ROLL IT OURSELVES!
+
+                    // If target was modified, sync joystick to prevent runaway
+                    //if (fabs(target.x - original_target.x) > 0.001 || fabs(target.y - original_target.y) > 0.001)
+                    //{
+                    //    controller.pos.x = arm.joints[3].x;
+                    //    controller.pos.y = arm.joints[3].y;
+                    //    controller.vel = (mc2D_vec2_t)(0.0f, 0.0f);
+                    //    controller.state = MC_STATE_ACCELERATING;
+                    //    controller.settled_count = 0;
+
+                    //    target_pos.x = arm.joints[3].x;
+                    //    target_pos.y = arm.joints[3].y;
+                    //    joy_init(&joystick, target_pos);
+                    //    //joy_sync_to_position(&joystick, target);
+                    //}
+
+                    //if (ik_result != CONVERGES) {
+                    //    // Can't reach target - stop at current position
+                    //    controller.pos.x = arm.joints[3].x;
+                    //    controller.pos.y = arm.joints[3].y;
+                    //    controller.vel = (mc2D_vec2_t)(0.0f, 0.0f);
+                    //    controller.state = MC_STATE_ACCELERATING;
+                    //    controller.settled_count = 0;
+
+                    //    target_pos.x = arm.joints[3].x;
+                    //    target_pos.y = arm.joints[3].y;
+                    //    joy_init(&joystick, target_pos);
+                    //    //joy_sync_to_position(&joystick, target_pos);
+                    //}
 
                     // If target was constrained, sync joystick
                     mc2D_vec2_t temp = { target_pos.x - original_target.x, target_pos.y - original_target.y };
                     if (sqrt(temp.x * temp.x + temp.y * temp.y) > 0.1)
                     {
-                        joy_sync_to_position(&joystick, target_pos);
+                        //controller.pos.x = arm.joints[3].x;
+                        //controller.pos.y = arm.joints[3].y;
+                        //controller.vel = (mc2D_vec2_t)(0.0f, 0.0f);
+                        //controller.state = MC_STATE_ACCELERATING;
+                        //controller.settled_count = 0;
+
+                        //joy_init(&joystick, target);
+                        //joy_sync_to_position(&joystick, target_pos);
                     }
 
                     /* Compute control */
@@ -4326,6 +4381,8 @@ int main(int, char**)
 
                     /* Update state */
                     mc2D_update_state(&controller, accel, 1.0 / FRAME_RATE);
+
+                    //target = controller.pos;
 
                     arm.joints[3].x = target.x;
                     arm.joints[3].y = target.y;
@@ -4434,6 +4491,7 @@ int main(int, char**)
                     ImGui::Text("POS3: %.2f/%.2f", arm.joints[3].x, arm.joints[3].y);
 
                     ImGui::Text("End-effector joint is %s shape", pointInBounds ? "inside" : "outside");
+                    prevTarget_Pos = target_pos; // save last known good state
                 }
                 ImGui::End();
             }
@@ -4635,6 +4693,26 @@ int main(int, char**)
                         ImGui::Button("RIGHT LAMP");
                         ImGui::PopStyleColor();
                     }
+                }
+                ImGui::End();
+            }
+            static bool show_atan2_window = true;
+            // 3. Show a CAN endianess playground window
+            if (show_atan2_window)
+            {
+                ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Appearing);
+                ImGui::Begin("atan2 DEBUG", &show_atan2_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+                {
+                    float fscAtan2 = 0;
+                    float realAtan2 = 0;
+                    static float inputValY = 0;
+                    static float inputValX = 0;
+                    ImGui::SliderFloat("input Y", &inputValY, -1, 1);
+                    ImGui::SliderFloat("input X", &inputValX, -1, 1);
+                    fscAtan2 = fsc_atan2f(inputValY, inputValX) * RAD_TO_DEG;
+                    realAtan2 = atan2(inputValY, inputValX) * RAD_TO_DEG;
+                    ImGui::Text("fsc_atan2: %.1f °", fscAtan2);
+                    ImGui::Text("act_atan2: %.1f °", realAtan2);
                 }
                 ImGui::End();
             }
