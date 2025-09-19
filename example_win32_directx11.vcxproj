@@ -87,12 +87,14 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;pcan\lib\x64\PCANBasic.lib;openssl\lib\VC\x64\MDd\libssl.lib;openssl\lib\VC\x64\MDd\libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)/Lib/x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -101,14 +103,14 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;motionController;joystickHandling</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;pcan\lib\x64\PCANBasic.lib;openssl\lib\VC\x64\MDd\libssl.lib;openssl\lib\VC\x64\MDd\libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)/Lib/x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -119,15 +121,17 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling</AdditionalIncludeDirectories>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;pcan\lib\x64\PCANBasic.lib;openssl\lib\VC\x64\MD\libssl.lib;openssl\lib\VC\x64\MD\libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)/Lib/x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -138,7 +142,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;motionController;joystickHandling</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling</AdditionalIncludeDirectories>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -148,7 +152,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxgi.lib;pcan\lib\x64\PCANBasic.lib;openssl\lib\VC\x64\MD\libssl.lib;openssl\lib\VC\x64\MD\libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)/Lib/x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -178,10 +182,13 @@
     <ClInclude Include="motionController\motionController_2D.h" />
     <ClInclude Include="NativeFileDialog\nfd.h" />
     <ClInclude Include="NativeFileDialog\nfd_common.h" />
+    <ClInclude Include="openssl\include\openssl\aes.h" />
+    <ClInclude Include="openssl\include\openssl\evp.h" />
     <ClInclude Include="pcan\03_ManualRead.h" />
     <ClInclude Include="pcan\PCANBasic.h" />
     <ClInclude Include="pcan\stdafx.h" />
     <ClInclude Include="pcan\targetver.h" />
+    <ClInclude Include="RC40Flasher\RC40Flasher.h" />
     <ClInclude Include="sudoku\sudoku.h" />
   </ItemGroup>
   <ItemGroup>
@@ -209,6 +216,7 @@
     <ClCompile Include="NativeFileDialog\nfd_win.cpp" />
     <ClCompile Include="pcan\03_ManualRead.cpp" />
     <ClCompile Include="pcan\stdafx.cpp" />
+    <ClCompile Include="RC40Flasher\RC40Flasher.cpp" />
     <ClCompile Include="sudoku\sudoku.cpp" />
   </ItemGroup>
   <ItemGroup>

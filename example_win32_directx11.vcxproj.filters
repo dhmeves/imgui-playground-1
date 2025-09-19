@@ -85,6 +85,15 @@
     <Filter Include="Source Files\joystickHandling">
       <UniqueIdentifier>{1da1ac80-7ef8-4362-8e10-f0fcb6f8d55d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\openssl">
+      <UniqueIdentifier>{4631abb6-dda9-437e-bc24-889223f26679}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\RC40Flasher">
+      <UniqueIdentifier>{1eca4063-bbd0-4ae0-a021-8a5fe56e9207}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\RC40Flasher">
+      <UniqueIdentifier>{a77997f7-2838-4363-bad8-3da0ddd970e6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -174,6 +183,15 @@
     <ClInclude Include="joystickHandling\joystickHandling.h">
       <Filter>Header Files\joystickHandling</Filter>
     </ClInclude>
+    <ClInclude Include="openssl\include\openssl\aes.h">
+      <Filter>Header Files\openssl</Filter>
+    </ClInclude>
+    <ClInclude Include="openssl\include\openssl\evp.h">
+      <Filter>Header Files\openssl</Filter>
+    </ClInclude>
+    <ClInclude Include="RC40Flasher\RC40Flasher.h">
+      <Filter>Header Files\RC40Flasher</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -250,6 +268,9 @@
     </ClCompile>
     <ClCompile Include="joystickHandling\joystickHandling.c">
       <Filter>Source Files\joystickHandling</Filter>
+    </ClCompile>
+    <ClCompile Include="RC40Flasher\RC40Flasher.cpp">
+      <Filter>Source Files\RC40Flasher</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

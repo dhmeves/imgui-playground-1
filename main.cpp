@@ -22,6 +22,9 @@
 #include "motionController_2D.h"
 #include "joystickHandling.h"
 
+#include "RC40Flasher.h"
+#include <iostream>
+
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
 #include "nfd.h"			//	https://github.com/mlabbe/nativefiledialog
 //	ADD JSON SUPPORT 
@@ -203,6 +206,965 @@ void update_motion(MotionProfile* profile) {
  //    }
  //    return 0;
  //}
+
+void testRC40FastSecurityAccess() {
+    std::cout << "Testing RC40 Security Access with Faster Sequence..." << std::endl;
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_TEST", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Faster preparation sequence
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        // Programming mode
+        if (flasher.diagnosticSessionControl(0x02)) {
+            std::cout << "Programming mode entered successfully" << std::endl;
+
+            // FAST security access - minimize delay between seed and key
+            std::cout << "Performing FAST security access..." << std::endl;
+
+            auto seed = flasher.securityAccessRequestSeed();
+            if (!seed.empty() && seed.size() == 16) {
+                // Try multiple potential passwords
+                std::vector<std::string> testPasswords = {
+                    "DEF_PASSWORD_021",
+                    "DEFAULT_PASSWORD",
+                    "RC40_DEFAULT_KEY",
+                    "BOSCH_DEFAULT_21",
+                    "000102030405060708090A0B0C0D0E0F", // Hex string
+                    "REXROTH_FLASH_PW"
+                };
+
+                for (const auto& pwd : testPasswords) {
+                    std::cout << "\nTrying password: " << pwd << std::endl;
+
+                    std::vector<uint8_t> password;
+                    if (pwd.length() == 32) {
+                        // Convert hex string to bytes
+                        for (size_t i = 0; i < pwd.length(); i += 2) {
+                            std::string byteStr = pwd.substr(i, 2);
+                            password.push_back(static_cast<uint8_t>(std::stoi(byteStr, nullptr, 16)));
+                        }
+                    }
+                    else {
+                        password = std::vector<uint8_t>(pwd.begin(), pwd.end());
+                    }
+
+                    auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+                    // Send key immediately after calculation
+                    bool unlocked = flasher.securityAccessSendKey(key);
+
+                    if (unlocked) {
+                        std::cout << "SUCCESS! Correct password: " << pwd << std::endl;
+
+                        // Test unlock by trying an erase
+                        std::cout << "Testing erase to confirm unlock..." << std::endl;
+                        bool eraseTest = flasher.eraseMemory(0x00);
+                        std::cout << "Erase test: " << (eraseTest ? "SUCCESS" : "FAILED") << std::endl;
+
+                        flasher.cleanup();
+                        return;
+                    }
+                    else {
+                        std::cout << "Failed with this password" << std::endl;
+
+                        // Need to restart session for next attempt
+                        flasher.cleanup();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                        if (!flasher.initialize()) break;
+
+                        // Re-enter programming mode
+                        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+                        if (!flasher.diagnosticSessionControl(0x02)) {
+                            std::cout << "Failed to re-enter programming mode" << std::endl;
+                            break;
+                        }
+
+                        // Get fresh seed
+                        seed = flasher.securityAccessRequestSeed();
+                        if (seed.empty()) {
+                            std::cout << "Failed to get fresh seed" << std::endl;
+                            break;
+                        }
+                    }
+                }
+
+                std::cout << "\nNone of the test passwords worked." << std::endl;
+                std::cout << "You need the actual security password used when this RC40 firmware was built." << std::endl;
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cout << "Error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testRC40SecurityUnlock() {
+    std::cout << "Testing RC40 Security Key Calculation and Unlock..." << std::endl;
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_TEST", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Preparation sequence
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        // Programming mode
+        if (flasher.diagnosticSessionControl(0x02)) {
+            // Get seed
+            auto seed = flasher.securityAccessRequestSeed();
+            if (!seed.empty() && seed.size() == 16) {
+                std::cout << "Seed: ";
+                for (uint8_t b : seed) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                }
+                std::cout << std::dec << std::endl;
+
+                // **CRITICAL: You need your actual security password here**
+                std::cout << "\nEnter your RC40 security password: ";
+                std::string passwordStr;
+                std::getline(std::cin, passwordStr);
+
+                if (passwordStr.empty()) {
+                    // Use a test password for now - REPLACE WITH REAL PASSWORD
+                    passwordStr = "TestPassword1234";
+                    std::cout << "Using test password (this will likely fail on real hardware)" << std::endl;
+                }
+
+                std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+
+                // Calculate key
+                std::cout << "Calculating AES key..." << std::endl;
+                auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+                std::cout << "Key:  ";
+                for (uint8_t b : key) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                }
+                std::cout << std::dec << std::endl;
+
+                // Send key to unlock
+                std::cout << "\nSending security key..." << std::endl;
+                bool unlocked = flasher.securityAccessSendKey(key);
+
+                if (unlocked) {
+                    std::cout << "🎉 SUCCESS: RC40 CONTROLLER IS UNLOCKED!" << std::endl;
+                    std::cout << "Ready for firmware flashing!" << std::endl;
+
+                    // Test a simple erase command to verify unlock status
+                    std::cout << "\nTesting erase command (CB block)..." << std::endl;
+                    bool eraseResult = flasher.eraseMemory(0x00); // CB block
+                    std::cout << "Erase test: " << (eraseResult ? "SUCCESS" : "FAILED") << std::endl;
+
+                }
+                else {
+                    std::cout << "❌ FAILED: Security access denied" << std::endl;
+                    std::cout << "This usually means wrong password or key calculation issue" << std::endl;
+                }
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cout << "Error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testRC40SecurityAccess() {
+    std::cout << "Testing RC40 Security Access with Multi-Frame Support..." << std::endl;
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_TEST", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Do the preparation sequence first
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        // Enter programming mode
+        std::cout << "Entering programming mode..." << std::endl;
+        if (flasher.diagnosticSessionControl(0x02)) {
+            std::cout << "Programming mode successful!" << std::endl;
+
+            // Test multi-frame security access
+            std::cout << "Requesting security seed..." << std::endl;
+            auto seed = flasher.securityAccessRequestSeed();
+
+            if (!seed.empty()) {
+                std::cout << "SUCCESS: Received " << seed.size() << " byte seed: ";
+                for (uint8_t b : seed) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                }
+                std::cout << std::dec << std::endl;
+
+                if (seed.size() == 16) {
+                    std::cout << "Perfect! 16-byte seed received - ready for key calculation!" << std::endl;
+                }
+            }
+            else {
+                std::cout << "Failed to get seed" << std::endl;
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cout << "Error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testRC40CorrectSequence() {
+    std::cout << "Testing RC40 with Correct Response Handling..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) return;
+
+    uint32_t functionalId = 0x18DB33F1;
+    uint32_t physicalReq = 0x18DA01FA;
+    uint32_t physicalResp = 0x18DAFA01;
+
+    auto sendPhysicalWithPending = [&](const std::vector<uint8_t>& cmd, const std::string& description) -> bool {
+        std::cout << "PHYSICAL: " << description << std::endl;
+
+        TPCANMsg msg;
+        msg.ID = physicalReq;
+        msg.LEN = static_cast<BYTE>(cmd.size() + 1);
+        msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+        msg.DATA[0] = static_cast<BYTE>(cmd.size());
+        for (size_t i = 0; i < cmd.size(); ++i) {
+            msg.DATA[i + 1] = cmd[i];
+        }
+
+        if (CAN_Write(PCAN_USBBUS1, &msg) != PCAN_ERROR_OK) return false;
+
+        bool gotPending = false;
+
+        // Wait for response with proper pending handling
+        for (int attempts = 0; attempts < 1000; attempts++) { // Longer timeout for pending
+            TPCANMsg responseMsg;
+            TPCANTimestamp timestamp;
+            TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+            if (readResult == PCAN_ERROR_OK && responseMsg.ID == physicalResp) {
+                std::cout << "  Response: ";
+                for (int i = 0; i < responseMsg.LEN; ++i) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                }
+                std::cout << std::dec << std::endl;
+
+                if (responseMsg.LEN >= 3) {
+                    uint8_t service = responseMsg.DATA[1];
+
+                    if (service == 0x7F) {  // Negative response
+                        uint8_t errorCode = responseMsg.DATA[3];
+                        if (errorCode == 0x78) {  // Response pending
+                            std::cout << "  RESPONSE PENDING - continuing to wait..." << std::endl;
+                            gotPending = true;
+                            continue;  // Keep waiting for final response
+                        }
+                        else {
+                            std::cout << "  NEGATIVE RESPONSE - Code: 0x" << std::hex << (int)errorCode << std::dec << std::endl;
+                            return false;
+                        }
+                    }
+                    else if ((service & 0x40) != 0) {  // Positive response
+                        std::cout << "  POSITIVE RESPONSE" << std::endl;
+                        return true;
+                    }
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        if (gotPending) {
+            std::cout << "  TIMEOUT waiting for final response after pending" << std::endl;
+        }
+        else {
+            std::cout << "  TIMEOUT - no response" << std::endl;
+        }
+        return false;
+        };
+
+    // Functional preparation
+    auto sendFunctional = [&](const std::vector<uint8_t>& cmd) -> bool {
+        TPCANMsg msg;
+        msg.ID = functionalId;
+        msg.LEN = static_cast<BYTE>(cmd.size() + 1);
+        msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+        msg.DATA[0] = static_cast<BYTE>(cmd.size());
+        for (size_t i = 0; i < cmd.size(); ++i) {
+            msg.DATA[i + 1] = cmd[i];
+        }
+        return CAN_Write(PCAN_USBBUS1, &msg) == PCAN_ERROR_OK;
+        };
+
+    std::cout << "=== PREPARATION PHASE ===" << std::endl;
+    sendFunctional({ 0x10, 0x83 }); std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    sendFunctional({ 0x85, 0x82 }); std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    sendFunctional({ 0x28, 0x81, 0x01 }); std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    std::cout << "\n=== PROGRAMMING SESSION ===" << std::endl;
+    bool progSession = sendPhysicalWithPending({ 0x10, 0x02 }, "Enter Programming Session");
+
+    if (progSession) {
+        std::cout << "\n=== SECURITY ACCESS ===" << std::endl;
+        bool seedReq = sendPhysicalWithPending({ 0x27, 0x01 }, "Request Security Seed");
+
+        if (seedReq) {
+            std::cout << "\nSUCCESS: Ready for key calculation and flashing!" << std::endl;
+        }
+    }
+
+    CAN_Uninitialize(PCAN_USBBUS1);
+}
+
+void testRC40MixedAddressingSequence() {
+    std::cout << "Testing RC40 Mixed Addressing Sequence (Functional + Physical)..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) return;
+
+    // Based on your reference document, use functional addressing for preparation
+    uint32_t functionalId = 0x18DB33F1;  // Use the first functional ID
+    uint32_t physicalReq = 0x18DA01FA;   // Your confirmed working physical ID
+    uint32_t physicalResp = 0x18DAFA01;
+
+    auto sendFunctional = [&](const std::vector<uint8_t>& cmd, const std::string& description) -> bool {
+        std::cout << "FUNCTIONAL: " << description << std::endl;
+
+        TPCANMsg msg;
+        msg.ID = functionalId;
+        msg.LEN = static_cast<BYTE>(cmd.size() + 1);
+        msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+        msg.DATA[0] = static_cast<BYTE>(cmd.size());
+        for (size_t i = 0; i < cmd.size(); ++i) {
+            msg.DATA[i + 1] = cmd[i];
+        }
+
+        TPCANStatus writeResult = CAN_Write(PCAN_USBBUS1, &msg);
+        if (writeResult == PCAN_ERROR_OK) {
+            std::cout << "  Sent (no response expected)" << std::endl;
+            return true;
+        }
+        std::cout << "  Send failed" << std::endl;
+        return false;
+        };
+
+    auto sendPhysical = [&](const std::vector<uint8_t>& cmd, const std::string& description) -> bool {
+        std::cout << "PHYSICAL: " << description << std::endl;
+
+        TPCANMsg msg;
+        msg.ID = physicalReq;
+        msg.LEN = static_cast<BYTE>(cmd.size() + 1);
+        msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+        msg.DATA[0] = static_cast<BYTE>(cmd.size());
+        for (size_t i = 0; i < cmd.size(); ++i) {
+            msg.DATA[i + 1] = cmd[i];
+        }
+
+        if (CAN_Write(PCAN_USBBUS1, &msg) != PCAN_ERROR_OK) {
+            std::cout << "  Send failed" << std::endl;
+            return false;
+        }
+
+        // Wait for physical response
+        for (int attempts = 0; attempts < 200; attempts++) {
+            TPCANMsg responseMsg;
+            TPCANTimestamp timestamp;
+            TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+            if (readResult == PCAN_ERROR_OK && responseMsg.ID == physicalResp) {
+                std::cout << "  Response: ";
+                for (int i = 0; i < responseMsg.LEN; ++i) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                }
+                std::cout << std::dec << std::endl;
+
+                // Check for positive response
+                if (responseMsg.LEN >= 2 && (responseMsg.DATA[1] & 0x40) != 0) {
+                    std::cout << "  SUCCESS" << std::endl;
+                    return true;
+                }
+                else if (responseMsg.LEN >= 2 && responseMsg.DATA[1] == 0x7F) {
+                    std::cout << "  NEGATIVE RESPONSE - Code: 0x" << std::hex << (int)responseMsg.DATA[3] << std::dec << std::endl;
+                    return false;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        std::cout << "  TIMEOUT" << std::endl;
+        return false;
+        };
+
+    // Follow the exact sequence from your reference document
+    std::cout << "\n=== PREPARATION PHASE (Functional) ===" << std::endl;
+
+    // Step 1: Extended Diagnostic Session (Functional)
+    bool step1 = sendFunctional({ 0x10, 0x83 }, "Extended Diagnostic Session");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));  // S3 timing
+
+    // Step 2: Control DTC Settings (Functional)  
+    bool step2 = sendFunctional({ 0x85, 0x82 }, "Control DTC Settings - DTC OFF");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    // Step 3: Communication Control (Functional)
+    bool step3 = sendFunctional({ 0x28, 0x81, 0x01 }, "Communication Control - Disable Non-Diagnostic Messages");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    std::cout << "\n=== PROGRAMMING PHASE (Physical) ===" << std::endl;
+
+    // Step 4: Programming Session (Physical - expects response)
+    bool step4 = sendPhysical({ 0x10, 0x02 }, "Enter Programming Session");
+
+    if (step4) {
+        std::cout << "\n*** SUCCESS! RC40 is now in programming mode ***" << std::endl;
+
+        // Test Security Access
+        std::cout << "\n=== SECURITY ACCESS TEST ===" << std::endl;
+        bool seedRequest = sendPhysical({ 0x27, 0x01 }, "Request Security Seed");
+
+        if (seedRequest) {
+            std::cout << "Ready for security key calculation and flashing!" << std::endl;
+        }
+    }
+    else {
+        std::cout << "\nProgramming session entry failed." << std::endl;
+        std::cout << "This may be normal - some controllers need all preparation steps." << std::endl;
+    }
+
+    CAN_Uninitialize(PCAN_USBBUS1);
+}
+
+void testRC40FunctionalSequence() {
+    std::cout << "Testing RC40 Functional Addressing Sequence..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) return;
+
+    // Test different functional addresses for extended CAN IDs
+    std::vector<uint32_t> functionalIds = {
+        0x18DB33F1,  // Common functional address
+        0x18DBFFF1,  // Broadcast functional
+        0x18DB01F1,  // Node-specific functional
+        0x18DFFFFF,  // Alternative broadcast
+    };
+
+    for (uint32_t funcId : functionalIds) {
+        std::cout << "Testing functional ID: 0x" << std::hex << funcId << std::dec << std::endl;
+
+        TPCANMsg msg;
+        msg.ID = funcId;
+        msg.LEN = 3;
+        msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+        msg.DATA[0] = 0x02;  // Length
+        msg.DATA[1] = 0x10;  // Diagnostic Session Control
+        msg.DATA[2] = 0x83;  // Extended Diagnostic Session
+
+        TPCANStatus writeResult = CAN_Write(PCAN_USBBUS1, &msg);
+        if (writeResult == PCAN_ERROR_OK) {
+            std::cout << "Message sent successfully" << std::endl;
+
+            // Functional addressing typically doesn't expect responses,
+            // but let's listen for any traffic
+            for (int attempts = 0; attempts < 100; attempts++) {
+                TPCANMsg responseMsg;
+                TPCANTimestamp timestamp;
+                TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+                if (readResult == PCAN_ERROR_OK) {
+                    std::cout << "Response ID: 0x" << std::hex << std::setw(8) << std::setfill('0')
+                        << responseMsg.ID << " Data: ";
+                    for (int i = 0; i < responseMsg.LEN; ++i) {
+                        std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                    }
+                    std::cout << std::dec << std::endl;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+
+        // Small delay between attempts
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    CAN_Uninitialize(PCAN_USBBUS1);
+}
+
+void testRC40ProgrammingSequence() {
+    std::cout << "Testing RC40 Programming Sequence..." << std::endl;
+
+    // Create controller with correct settings
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_REAL", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) {
+        std::cout << "Failed to initialize" << std::endl;
+        return;
+    }
+
+    try {
+        // Step 1: Extended Diagnostic Session
+        std::cout << "Step 1: Extended Diagnostic Session..." << std::endl;
+        bool result1 = flasher.diagnosticSessionControl(0x83);
+        std::cout << "Result: " << (result1 ? "SUCCESS" : "FAILED") << std::endl;
+
+        // Step 2: Programming Session 
+        std::cout << "Step 2: Programming Session..." << std::endl;
+        bool result2 = flasher.diagnosticSessionControl(0x02);
+        std::cout << "Result: " << (result2 ? "SUCCESS" : "FAILED") << std::endl;
+
+        if (result2) {
+            // Step 3: Security Access - Request Seed
+            std::cout << "Step 3: Security Access - Request Seed..." << std::endl;
+            auto seed = flasher.securityAccessRequestSeed();
+            if (!seed.empty()) {
+                std::cout << "SUCCESS: Received " << seed.size() << " byte seed" << std::endl;
+
+                // You'll need your actual security password here
+                std::string passwordStr = "YourActualPassword"; // REPLACE THIS
+                std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+
+                auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+                std::cout << "Step 4: Security Access - Send Key..." << std::endl;
+                bool keyResult = flasher.securityAccessSendKey(key);
+                std::cout << "Result: " << (keyResult ? "SUCCESS - UNLOCKED!" : "FAILED - Wrong password?") << std::endl;
+            }
+            else {
+                std::cout << "FAILED to get seed" << std::endl;
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cout << "Exception: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testRC40ExtendedAddressing() {
+    std::cout << "Testing RC40 with extended CAN ID (18DA01FAh)..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) {
+        std::cout << "Failed to initialize CAN" << std::endl;
+        return;
+    }
+
+    // Test 1: Default Session (safe test)
+    std::cout << "Test 1: Default Diagnostic Session..." << std::endl;
+    TPCANMsg msg;
+    msg.ID = 0x18DA01FA;                    // Extended ID from forum post
+    msg.LEN = 3;
+    msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;    // Important: Extended frame!
+    msg.DATA[0] = 0x02;                     // ISO-TP single frame length
+    msg.DATA[1] = 0x10;                     // UDS Diagnostic Session Control
+    msg.DATA[2] = 0x01;                     // Default session
+
+    TPCANStatus writeResult = CAN_Write(PCAN_USBBUS1, &msg);
+    std::cout << "Write result: 0x" << std::hex << writeResult << std::dec << std::endl;
+
+    if (writeResult == PCAN_ERROR_OK) {
+        // Expected response ID: 18DAFA01 (swapped addresses)
+        uint32_t expectedResponseId = 0x18DAFA01;
+
+        std::cout << "Listening for response on 0x" << std::hex << expectedResponseId << std::dec << "..." << std::endl;
+
+        for (int attempts = 0; attempts < 200; attempts++) {
+            TPCANMsg responseMsg;
+            TPCANTimestamp timestamp;
+            TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+            if (readResult == PCAN_ERROR_OK) {
+                std::cout << "Response received!" << std::endl;
+                std::cout << "ID: 0x" << std::hex << std::setw(8) << std::setfill('0') << responseMsg.ID << std::dec;
+                std::cout << " Type: " << (responseMsg.MSGTYPE == PCAN_MESSAGE_EXTENDED ? "Extended" : "Standard");
+                std::cout << " Len: " << (int)responseMsg.LEN << " Data: ";
+                for (int i = 0; i < responseMsg.LEN; ++i) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                }
+                std::cout << std::dec << std::endl;
+
+                // Check if it's a positive response (50 01...)
+                if (responseMsg.LEN >= 2 && responseMsg.DATA[1] == 0x50) {
+                    std::cout << "SUCCESS: Positive UDS response received!" << std::endl;
+                }
+
+                CAN_Uninitialize(PCAN_USBBUS1);
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        std::cout << "No response received after 2 seconds." << std::endl;
+    }
+
+    // Test 2: Try the specific test command from forum
+    std::cout << "\nTest 2: Forum test command (03 22 F1 92)..." << std::endl;
+    msg.ID = 0x18DA01FA;
+    msg.LEN = 4;
+    msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+    msg.DATA[0] = 0x03;    // Length
+    msg.DATA[1] = 0x22;    // Read Data By Identifier
+    msg.DATA[2] = 0xF1;    // DID high byte
+    msg.DATA[3] = 0x92;    // DID low byte
+
+    writeResult = CAN_Write(PCAN_USBBUS1, &msg);
+    if (writeResult == PCAN_ERROR_OK) {
+        for (int attempts = 0; attempts < 200; attempts++) {
+            TPCANMsg responseMsg;
+            TPCANTimestamp timestamp;
+            TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+            if (readResult == PCAN_ERROR_OK) {
+                std::cout << "Test command response!" << std::endl;
+                std::cout << "ID: 0x" << std::hex << std::setw(8) << std::setfill('0') << responseMsg.ID
+                    << " Data: ";
+                for (int i = 0; i < responseMsg.LEN; ++i) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                }
+                std::cout << std::dec << std::endl;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+
+    CAN_Uninitialize(PCAN_USBBUS1);
+}
+
+void testRC40PhysicalAddressing() {
+    std::cout << "Testing RC40 physical addressing..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) return;
+
+    // Common ECU physical addresses
+    std::vector<uint32_t> physicalIds = {
+        0x700, 0x701, 0x702, 0x703, 0x704, 0x705, 0x706, 0x707,  // 0x70x range
+        0x7E0, 0x7E1, 0x7E2, 0x7E3, 0x7E4, 0x7E5,              // Standard UDS range
+        0x600, 0x601, 0x602, 0x603,                             // Alternative range
+    };
+
+    for (uint32_t requestId : physicalIds) {
+        uint32_t expectedResponseId = requestId + 0x08;  // Common pattern: response = request + 8
+
+        std::cout << "Trying physical ID 0x" << std::hex << requestId
+            << " (expecting response on 0x" << expectedResponseId << ")" << std::dec << std::endl;
+
+        TPCANMsg msg;
+        msg.ID = requestId;
+        msg.LEN = 3;
+        msg.MSGTYPE = PCAN_MESSAGE_STANDARD;
+        msg.DATA[0] = 0x02;  // Length
+        msg.DATA[1] = 0x10;  // Diagnostic Session Control  
+        msg.DATA[2] = 0x01;  // Default Session (safe request)
+
+        CAN_Write(PCAN_USBBUS1, &msg);
+
+        // Wait for response
+        for (int attempts = 0; attempts < 100; attempts++) {
+            TPCANMsg responseMsg;
+            TPCANTimestamp timestamp;
+            TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+            if (readResult == PCAN_ERROR_OK) {
+                std::cout << "FOUND RESPONSE! Request ID: 0x" << std::hex << requestId
+                    << " Response ID: 0x" << responseMsg.ID << std::dec << std::endl;
+                std::cout << "Response data: ";
+                for (int i = 0; i < responseMsg.LEN; ++i) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                }
+                std::cout << std::dec << std::endl;
+
+                CAN_Uninitialize(PCAN_USBBUS1);
+                return; // Success!
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+
+    std::cout << "No physical responses found." << std::endl;
+    CAN_Uninitialize(PCAN_USBBUS1);
+}
+
+void testRC40FunctionalAddressing() {
+    std::cout << "Testing RC40 functional addressing at 250K..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) {
+        std::cout << "Failed to initialize CAN" << std::endl;
+        return;
+    }
+
+    // UDS functional addressing uses 0x7DF for requests
+    TPCANMsg msg;
+    msg.ID = 0x7DF;  // Functional addressing ID
+    msg.LEN = 3;
+    msg.MSGTYPE = PCAN_MESSAGE_STANDARD;
+
+    // Test 1: Extended Diagnostic Session (from your reference doc)
+    std::cout << "Sending Extended Diagnostic Session (functional)..." << std::endl;
+    msg.DATA[0] = 0x02;  // ISO-TP length
+    msg.DATA[1] = 0x10;  // Diagnostic Session Control
+    msg.DATA[2] = 0x83;  // Extended Diagnostic Session
+
+    TPCANStatus writeResult = CAN_Write(PCAN_USBBUS1, &msg);
+    std::cout << "Write result: 0x" << std::hex << writeResult << std::dec << std::endl;
+
+    // According to your document, functional addressing might not expect responses
+    // But let's listen anyway for any physical responses
+    std::cout << "Listening for any responses (2 seconds)..." << std::endl;
+    auto startTime = std::chrono::steady_clock::now();
+    bool gotResponse = false;
+
+    while (std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count() < 2000) {
+
+        TPCANMsg responseMsg;
+        TPCANTimestamp timestamp;
+        TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+        if (readResult == PCAN_ERROR_OK) {
+            gotResponse = true;
+            std::cout << "Response - ID: 0x" << std::hex << std::setw(3) << std::setfill('0')
+                << responseMsg.ID << " Data: ";
+            for (int i = 0; i < responseMsg.LEN; ++i) {
+                std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+            }
+            std::cout << std::dec << std::endl;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    if (!gotResponse) {
+        std::cout << "No responses (this may be normal for functional addressing)" << std::endl;
+    }
+
+    CAN_Uninitialize(PCAN_USBBUS1);
+}
+
+void testDifferentCANIDs_250K() {
+    std::cout << "Testing different CAN IDs at 250K..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) return;
+
+    struct IDPair {
+        uint32_t request;
+        uint32_t response;
+        const char* description;
+    };
+
+    std::vector<IDPair> idPairs = {
+        {0x7E0, 0x7E8, "Standard UDS"},
+        {0x700, 0x708, "Alt 1"},
+        {0x600, 0x608, "Alt 2"},
+        {0x123, 0x12B, "Sequential"},
+        {0x200, 0x201, "Low Range"},
+        {0x300, 0x301, "Mid Range"},
+        // RC40 might use specific ranges
+    };
+
+    for (const auto& ids : idPairs) {
+        std::cout << "Testing " << ids.description << " (0x" << std::hex
+            << ids.request << " -> 0x" << ids.response << ")" << std::dec << std::endl;
+
+        TPCANMsg msg;
+        msg.ID = ids.request;
+        msg.LEN = 3;
+        msg.MSGTYPE = PCAN_MESSAGE_STANDARD;
+        msg.DATA[0] = 0x02;  // ISO-TP length
+        msg.DATA[1] = 0x10;  // UDS Diagnostic Session Control
+        msg.DATA[2] = 0x01;  // Default session
+
+        TPCANStatus writeResult = CAN_Write(PCAN_USBBUS1, &msg);
+        if (writeResult == PCAN_ERROR_OK) {
+            // Wait for response
+            for (int attempts = 0; attempts < 50; attempts++) {
+                TPCANMsg responseMsg;
+                TPCANTimestamp timestamp;
+                TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+
+                if (readResult == PCAN_ERROR_OK) {
+                    if (responseMsg.ID == ids.response) {
+                        std::cout << "SUCCESS! Response on expected ID 0x" << std::hex << responseMsg.ID << std::dec << std::endl;
+                        std::cout << "Response data: ";
+                        for (int i = 0; i < responseMsg.LEN; ++i) {
+                            std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                        }
+                        std::cout << std::dec << std::endl;
+                        CAN_Uninitialize(PCAN_USBBUS1);
+                        return; // Found working IDs!
+                    }
+                    else {
+                        std::cout << "Unexpected response ID: 0x" << std::hex << responseMsg.ID << std::dec << std::endl;
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+    }
+
+    CAN_Uninitialize(PCAN_USBBUS1);
+    std::cout << "No responses found with tested ID pairs." << std::endl;
+}
+
+
+void testCANReceive() {
+    std::cout << "Listening for CAN messages at 250K..." << std::endl;
+
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result != PCAN_ERROR_OK) {
+        std::cout << "Failed to initialize CAN" << std::endl;
+        return;
+    }
+
+    std::cout << "Listening for 10 seconds..." << std::endl;
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - startTime).count() < 10) {
+
+        TPCANMsg msg;
+        TPCANTimestamp timestamp;
+        TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &msg, &timestamp);
+
+        if (readResult == PCAN_ERROR_OK) {
+            std::cout << "Received - ID: 0x" << std::hex << std::setw(3) << std::setfill('0') << msg.ID
+                << " Len: " << std::dec << (int)msg.LEN << " Data: ";
+            for (int i = 0; i < msg.LEN; ++i) {
+                std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)msg.DATA[i] << " ";
+            }
+            std::cout << std::dec << std::endl;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    CAN_Uninitialize(PCAN_USBBUS1);
+    std::cout << "Listening complete." << std::endl;
+}
+
+void testDifferentBitrates() {
+    std::vector<TPCANBaudrate> bitrates = {
+        PCAN_BAUD_250K,   // Try 250kbps first
+        PCAN_BAUD_500K,   // Current setting
+        PCAN_BAUD_125K,   // Sometimes used
+        PCAN_BAUD_1M      // Less common but possible
+    };
+
+    for (auto bitrate : bitrates) {
+        std::cout << "Testing bitrate: ";
+        switch (bitrate) {
+        case PCAN_BAUD_125K: std::cout << "125K"; break;
+        case PCAN_BAUD_250K: std::cout << "250K"; break;
+        case PCAN_BAUD_500K: std::cout << "500K"; break;
+        case PCAN_BAUD_1M: std::cout << "1M"; break;
+        }
+        std::cout << std::endl;
+
+        // Initialize with this bitrate
+        TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, bitrate, 0, 0, 0);
+        if (result == PCAN_ERROR_OK) {
+            std::cout << "CAN initialized at this bitrate" << std::endl;
+
+            // Try to send a simple message and see if we get a different error
+            TPCANMsg msg;
+            msg.ID = 0x7E0;
+            msg.LEN = 3;
+            msg.MSGTYPE = PCAN_MESSAGE_STANDARD;
+            msg.DATA[0] = 0x02;  // Length
+            msg.DATA[1] = 0x10;  // UDS Service
+            msg.DATA[2] = 0x01;  // Default session
+
+            TPCANStatus writeResult = CAN_Write(PCAN_USBBUS1, &msg);
+            std::cout << "Write result: 0x" << std::hex << writeResult << std::dec << std::endl;
+
+            // Wait briefly and try to read
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            TPCANMsg responseMsg;
+            TPCANTimestamp timestamp;
+            TPCANStatus readResult = CAN_Read(PCAN_USBBUS1, &responseMsg, &timestamp);
+            std::cout << "Read result: 0x" << std::hex << readResult << std::dec << std::endl;
+
+            CAN_Uninitialize(PCAN_USBBUS1);
+            std::cout << "---" << std::endl;
+        }
+    }
+}
+
+void testCANCommunication() {
+    std::cout << "Testing CAN Communication..." << std::endl;
+
+    // Create a simple test controller
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "TEST_001", PCAN_USBBUS1);
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (flasher.initialize()) {
+        std::cout << "CAN hardware initialized successfully!" << std::endl;
+
+        try {
+            // Try a simple diagnostic session control request
+            bool result = flasher.diagnosticSessionControl(0x01); // Default session
+            std::cout << "Diagnostic session test: " << (result ? "SUCCESS" : "FAILED") << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cout << "CAN communication test failed: " << e.what() << std::endl;
+        }
+
+        flasher.cleanup();
+    }
+    else {
+        std::cout << "CAN hardware initialization failed!" << std::endl;
+    }
+}
 
 
 int ParseJson(std::string JsonStr, Json::Value& parsedJson)
@@ -2525,6 +3487,49 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 // Main code
 int main(int, char**)
 {
+    std::cout << "RC40 Flasher Dependencies Test" << std::endl;
+    std::cout << "================================" << std::endl;
+
+    // Test OpenSSL
+    std::cout << "Testing OpenSSL AES..." << std::endl;
+    try {
+        bool aesOk = RC40Flasher::AES128Security::testAES();
+        std::cout << "OpenSSL AES: " << (aesOk ? "OK" : "FAILED") << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cout << "OpenSSL AES: FAILED - " << e.what() << std::endl;
+    }
+
+    // Test PCAN
+    std::cout << "Testing PCAN Basic..." << std::endl;
+    TPCANStatus result = CAN_Initialize(PCAN_USBBUS1, PCAN_BAUD_250K, 0, 0, 0);
+    if (result == PCAN_ERROR_OK) {
+        std::cout << "PCAN Basic: OK" << std::endl;
+        CAN_Uninitialize(PCAN_USBBUS1);
+    }
+    else {
+        std::cout << "PCAN Basic: " << (result == PCAN_ERROR_NODRIVER ? "OK (No hardware)" : "FAILED")
+            << " - Code: 0x" << std::hex << result << std::dec << std::endl;
+    }
+
+    std::cout << "\nSetup verification complete!" << std::endl;
+
+    //testDifferentBitrates();
+    //testCANCommunication();
+    //testCANReceive();
+    //testDifferentCANIDs_250K();
+    //testRC40FunctionalAddressing();
+    //testRC40PhysicalAddressing();
+    //testRC40ExtendedAddressing();
+    //testRC40ProgrammingSequence();
+    //testRC40FunctionalSequence();
+    //testRC40MixedAddressingSequence();
+    //testRC40CorrectSequence();
+    //testRC40SecurityAccess();
+    //testRC40SecurityUnlock();
+    testRC40FastSecurityAccess();
+
+
     // Create application window
     //ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
