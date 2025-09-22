@@ -207,6 +207,1519 @@ void update_motion(MotionProfile* profile) {
  //    return 0;
  //}
 
+
+// Add this HEX file parser function
+std::vector<uint8_t> parseIntelHexFile(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open HEX file: " + filename);
+    }
+
+    std::map<uint32_t, uint8_t> addressData; // Address -> Data mapping
+    uint32_t extendedAddress = 0;
+    uint32_t minAddress = UINT32_MAX;
+    uint32_t maxAddress = 0;
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] != ':') continue;
+
+        if (line.length() < 11) {
+            throw std::runtime_error("Invalid HEX line: " + line);
+        }
+
+        // Parse HEX line: :LLAAAATT[DD...]CC
+        uint8_t byteCount = std::stoi(line.substr(1, 2), nullptr, 16);
+        uint16_t address = std::stoi(line.substr(3, 4), nullptr, 16);
+        uint8_t recordType = std::stoi(line.substr(7, 2), nullptr, 16);
+
+        uint32_t fullAddress = extendedAddress + address;
+
+
+        switch (recordType) {
+        case 0x00: // Data record
+            for (int i = 0; i < byteCount; ++i) {
+                uint8_t data = std::stoi(line.substr(9 + i * 2, 2), nullptr, 16);
+                addressData[fullAddress + i] = data;
+                minAddress = (std::min)(minAddress, fullAddress + i);
+                maxAddress = (std::max)(maxAddress, fullAddress + i);
+            }
+            break;
+
+        case 0x01: // End of file
+            break;
+
+        case 0x02: // Extended Segment Address
+            if (byteCount == 2) {
+                extendedAddress = std::stoi(line.substr(9, 4), nullptr, 16) << 4;
+            }
+            break;
+
+        case 0x04: // Extended Linear Address
+            if (byteCount == 2) {
+                extendedAddress = std::stoi(line.substr(9, 4), nullptr, 16) << 16;
+            }
+            break;
+
+        default:
+            std::cout << "Warning: Unsupported record type 0x" << std::hex << (int)recordType << std::dec << std::endl;
+            break;
+        }
+    }
+
+    if (addressData.empty()) {
+        throw std::runtime_error("No data found in HEX file");
+    }
+
+    // Convert to contiguous binary data
+    std::vector<uint8_t> binaryData;
+    std::cout << "HEX file parsed: Address range 0x" << std::hex << minAddress
+        << " to 0x" << maxAddress << std::dec << std::endl;
+    std::cout << "Total data size: " << (maxAddress - minAddress + 1) << " bytes" << std::endl;
+
+    // Fill gaps with 0xFF (common for flash memory)
+    for (uint32_t addr = minAddress; addr <= maxAddress; ++addr) {
+        auto it = addressData.find(addr);
+        if (it != addressData.end()) {
+            binaryData.push_back(it->second);
+        }
+        else {
+            binaryData.push_back(0xFF); // Fill gaps
+        }
+    }
+
+    std::cout << "Address analysis:" << std::endl;
+    std::cout << "ASW0 range: 0x09020000 - 0x093BFFFF" << std::endl;
+    std::cout << "DS0 range:  0x093C0000 - 0x094BFFFF" << std::endl;
+    std::cout << "File range: 0x" << std::hex << minAddress << " - 0x" << maxAddress << std::dec << std::endl;
+
+    if (maxAddress > 0x093BFFFF) {
+        std::cout << "WARNING: HEX file contains DS0 data!" << std::endl;
+    }
+
+    return binaryData;
+}
+
+void resetPCANChannel() {
+    std::cout << "Resetting PCAN channel..." << std::endl;
+
+    // Force uninitialize all possible channels
+    for (int i = PCAN_USBBUS1; i <= PCAN_USBBUS8; i++) {
+        CAN_Uninitialize(static_cast<TPCANHandle>(i));
+    }
+
+    // Brief delay for driver reset
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+}
+
+void flashASW0AndDS0Split() {
+    std::cout << "=== Flashing ASW0+DS0 Split (Official Tool Style) ===" << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_SPLIT_FLASH", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+    if (!flasher.initialize()) return;
+
+    try {
+        // Send tester present first (like official tool)
+        std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
+        flasher.sendUDSRequest(testerPresent, 1000);
+
+        // Use official tool sequence (no functional prep)
+        if (!flasher.diagnosticSessionControl(0x02)) {
+            std::cout << "Programming mode failed" << std::endl;
+            return;
+        }
+
+        // Security access
+        auto seed = flasher.securityAccessRequestSeed();
+        std::string passwordStr = "DEF_PASSWORD_021";
+        std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+        auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+        if (!flasher.securityAccessSendKey(key)) {
+            std::cout << "Security access failed" << std::endl;
+            return;
+        }
+
+
+        // After security access success, add:
+        std::cout << "Writing fingerprint data..." << std::endl;
+
+        // Programming date (DDMMYYYY format)
+        std::vector<uint8_t> dateCmd = { 0x2E, 0xF1, 0x99 };
+        std::string progDate = "22092025"; // Today's date
+        dateCmd.insert(dateCmd.end(), progDate.begin(), progDate.end());
+
+        auto dateResp = flasher.sendUDSRequestWithMultiFrame(dateCmd, 2000);
+        if (dateResp.size() >= 2 && dateResp[0] == 0x6E) {
+            std::cout << "Fingerprint date: SUCCESS" << std::endl;
+        }
+        else {
+            std::cout << "Fingerprint date: FAILED" << std::endl;
+            return;
+        }
+
+        // Load and split firmware data
+        std::string hexFile = "firmware/rc5_6_40_asw0.hex";
+        std::vector<uint8_t> firmwareData;
+
+        try {
+            firmwareData = parseIntelHexFile(hexFile);
+            std::cout << "Total firmware loaded: " << firmwareData.size() << " bytes" << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cout << "Cannot load firmware file: " << e.what() << std::endl;
+            return;
+        }
+
+        // Split at ASW0/DS0 boundary
+        uint32_t asw0Start = 0x09020000;
+        uint32_t asw0End = 0x093BFFFF;
+        uint32_t ds0Start = 0x093C0000;
+
+        uint32_t asw0Size = asw0End - asw0Start + 1;  // 0x3A0000 bytes
+        uint32_t ds0Offset = ds0Start - asw0Start;    // Offset in firmware data
+
+        // Extract ASW0 portion
+        std::vector<uint8_t> asw0Data;
+        if (firmwareData.size() >= asw0Size) {
+            asw0Data = std::vector<uint8_t>(firmwareData.begin(), firmwareData.begin() + asw0Size);
+        }
+        else {
+            asw0Data = firmwareData; // Use all data if smaller than expected
+        }
+
+        // Extract DS0 portion if it exists
+        std::vector<uint8_t> ds0Data;
+        if (firmwareData.size() > ds0Offset) {
+            ds0Data = std::vector<uint8_t>(firmwareData.begin() + ds0Offset, firmwareData.end());
+        }
+
+        // After splitting the data:
+        std::cout << "ASW0 data: " << asw0Data.size() << " bytes" << std::endl;
+
+        // Pad ASW0 to full expected size (0x3A0000 = 3866624 bytes)
+        const uint32_t expectedASW0Size = 0x3A0000;
+        if (asw0Data.size() < expectedASW0Size) {
+            std::cout << "Padding ASW0 from " << asw0Data.size() << " to " << expectedASW0Size << " bytes" << std::endl;
+            asw0Data.resize(expectedASW0Size, 0xFF); // Pad with 0xFF (common for flash)
+        }
+
+        std::cout << "ASW0 data: " << asw0Data.size() << " bytes" << std::endl;
+        std::cout << "DS0 data: " << ds0Data.size() << " bytes" << std::endl;
+
+        // Flash ASW0 first (like official tool)
+        std::cout << "\n=== FLASHING ASW0 ===" << std::endl;
+
+        std::cout << "Erasing ASW0..." << std::endl;
+        if (!flasher.eraseMemory(0x01)) {
+            std::cout << "ASW0 erase failed" << std::endl;
+            return;
+        }
+
+        std::cout << "Request download ASW0..." << std::endl;
+        uint16_t maxBlockSize = flasher.requestDownload(asw0Start, (uint32_t)asw0Data.size());
+        if (maxBlockSize == 0) {
+            std::cout << "ASW0 request download failed" << std::endl;
+            return;
+        }
+
+        std::cout << "Transferring ASW0 data..." << std::endl;
+        if (!flasher.transferData(asw0Data, maxBlockSize)) {
+            std::cout << "ASW0 transfer failed" << std::endl;
+            return;
+        }
+
+        std::cout << "ASW0 transfer exit..." << std::endl;
+        if (!flasher.requestTransferExit()) {
+            std::cout << "ASW0 transfer exit failed" << std::endl;
+            return;
+        }
+
+        std::cout << "ASW0 memory check..." << std::endl;
+        if (!flasher.checkMemory(0x01)) {
+            std::cout << "ASW0 memory check failed" << std::endl;
+            return;
+        }
+
+        std::cout << "ASW0 flashing complete!" << std::endl;
+
+        // Flash DS0 if data exists
+        if (!ds0Data.empty()) {
+            std::cout << "\n=== FLASHING DS0 ===" << std::endl;
+
+            std::cout << "Erasing DS0..." << std::endl;
+            if (!flasher.eraseMemory(0x02)) {
+                std::cout << "DS0 erase failed" << std::endl;
+                return;
+            }
+
+            std::cout << "Request download DS0..." << std::endl;
+            maxBlockSize = flasher.requestDownload(ds0Start, (uint32_t)ds0Data.size());
+            if (maxBlockSize == 0) {
+                std::cout << "DS0 request download failed" << std::endl;
+                return;
+            }
+
+            std::cout << "Transferring DS0 data..." << std::endl;
+            if (!flasher.transferData(ds0Data, maxBlockSize)) {
+                std::cout << "DS0 transfer failed" << std::endl;
+                return;
+            }
+
+            std::cout << "DS0 transfer exit..." << std::endl;
+            if (!flasher.requestTransferExit()) {
+                std::cout << "DS0 transfer exit failed" << std::endl;
+                return;
+            }
+
+            std::cout << "DS0 memory check..." << std::endl;
+            if (!flasher.checkMemory(0x02)) {
+                std::cout << "DS0 memory check failed" << std::endl;
+                return;
+            }
+
+            std::cout << "DS0 flashing complete!" << std::endl;
+        }
+        else {
+            std::cout << "No DS0 data found - skipping DS0 flash" << std::endl;
+        }
+
+        // Reset ECU
+        std::cout << "\n=== FINALIZING ===" << std::endl;
+        std::cout << "Resetting ECU..." << std::endl;
+        flasher.ecuReset();
+
+        std::cout << "\n*** FLASHING COMPLETE! ***" << std::endl;
+        std::cout << "ASW0: " << asw0Data.size() << " bytes" << std::endl;
+        if (!ds0Data.empty()) {
+            std::cout << "DS0:  " << ds0Data.size() << " bytes" << std::endl;
+        }
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Flash error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testOfficialToolSequence() {
+    std::cout << "=== Testing Official Tool Sequence ===" << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_OFFICIAL", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;  // Confirmed from trace
+    testConfig.canIdResponse = 0x18DAFA01; // Confirmed from trace
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Step 1: Send tester present (like official tool)
+        std::cout << "Step 1: Tester present..." << std::endl;
+        std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
+        auto tpResponse = flasher.sendUDSRequest(testerPresent, 1000);
+
+        if (tpResponse.size() >= 2 && tpResponse[0] == 0x7E) {
+            std::cout << "Tester present: SUCCESS" << std::endl;
+        }
+        else {
+            std::cout << "Tester present: FAILED" << std::endl;
+            return;
+        }
+
+        // Step 2: Programming mode directly (no functional prep)
+        std::cout << "Step 2: Programming mode..." << std::endl;
+        if (!flasher.diagnosticSessionControl(0x02)) {
+            std::cout << "Programming mode: FAILED" << std::endl;
+            return;
+        }
+        std::cout << "Programming mode: SUCCESS" << std::endl;
+
+        // Step 3: Security access
+        std::cout << "Step 3: Security access..." << std::endl;
+        auto seed = flasher.securityAccessRequestSeed();
+        if (seed.empty()) {
+            std::cout << "Security seed: FAILED" << std::endl;
+            return;
+        }
+        std::cout << "Security seed: SUCCESS (" << seed.size() << " bytes)" << std::endl;
+
+        std::string passwordStr = "DEF_PASSWORD_021";
+        std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+        auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+        if (!flasher.securityAccessSendKey(key)) {
+            std::cout << "Security access: FAILED" << std::endl;
+            return;
+        }
+        std::cout << "Security access: SUCCESS" << std::endl;
+
+        std::cout << "*** READY FOR FLASHING ***" << std::endl;
+
+        // Load firmware file
+        std::string hexFile = "firmware/rc5_6_40_asw0.hex";
+        std::vector<uint8_t> firmwareData;
+
+        try {
+            firmwareData = parseIntelHexFile(hexFile);
+            std::cout << "Loaded ASW0 firmware: " << firmwareData.size() << " bytes" << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cout << "Cannot load firmware file: " << e.what() << std::endl;
+            return;
+        }
+
+        // Erase ASW0 only
+        std::cout << "Step 1: Erasing ASW0..." << std::endl;
+        if (!flasher.eraseMemory(0x01)) {
+            std::cout << "ASW0 erase failed" << std::endl;
+            return;
+        }
+
+        // Request download for ASW0
+        std::cout << "Step 3: Request download for ASW0..." << std::endl;
+        uint32_t asw0Address = 0x09020000;
+        uint16_t maxBlockSize = flasher.requestDownload(asw0Address, (uint32_t)firmwareData.size());
+        if (maxBlockSize == 0) return;
+
+        // Transfer data
+        std::cout << "Step 3: Transferring ASW0 data..." << std::endl;
+        if (!flasher.transferData(firmwareData, maxBlockSize)) return;
+
+        // Transfer exit
+        std::cout << "Step 4: Transfer exit..." << std::endl;
+        if (!flasher.requestTransferExit()) return;
+
+        // Memory check
+        std::cout << "Step 5: Memory verification..." << std::endl;
+        if (!flasher.checkMemory(0x01)) return;
+
+        std::cout << "=== ASW0 FLASHING COMPLETE ===" << std::endl;
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void findWorkingPreparationSequence() {
+    std::cout << "=== Finding Working Preparation Sequence ===" << std::endl;
+    std::cout << "Testing different approaches to match official Rexroth tool behavior..." << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_PREP_TEST", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) {
+        std::cout << "CAN initialization failed" << std::endl;
+        return;
+    }
+
+    // Test different preparation approaches
+    std::vector<std::string> approaches = {
+        "No preparation - direct programming",
+        "Minimal functional prep",
+        "Full functional prep sequence",
+        "Extended session first",
+        "Different timing"
+    };
+
+    for (size_t i = 0; i < approaches.size(); ++i) {
+        std::cout << "\n--- Approach " << (i + 1) << ": " << approaches[i] << " ---" << std::endl;
+
+        try {
+            bool success = false;
+
+            switch (i) {
+            case 0: // No preparation
+                success = flasher.diagnosticSessionControl(0x02);
+                break;
+
+            case 1: // Minimal functional prep
+                flasher.sendFunctionalCommand({ 0x10, 0x83 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                success = flasher.diagnosticSessionControl(0x02);
+                break;
+
+            case 2: // Full functional prep (your current approach)
+                flasher.sendFunctionalCommand({ 0x10, 0x83 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                flasher.sendFunctionalCommand({ 0x85, 0x82 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                success = flasher.diagnosticSessionControl(0x02);
+                break;
+
+            case 3: // Extended session first
+                if (flasher.diagnosticSessionControl(0x03)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    success = flasher.diagnosticSessionControl(0x02);
+                }
+                break;
+
+            case 4: // Different timing
+                flasher.sendFunctionalCommand({ 0x10, 0x83 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Longer delay
+                flasher.sendFunctionalCommand({ 0x85, 0x82 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                success = flasher.diagnosticSessionControl(0x02);
+                break;
+            }
+
+            if (success) {
+                std::cout << "PROGRAMMING MODE: SUCCESS" << std::endl;
+
+                // Test security access
+                auto seed = flasher.securityAccessRequestSeed();
+                if (!seed.empty()) {
+                    std::cout << "SECURITY SEED: SUCCESS (" << seed.size() << " bytes)" << std::endl;
+
+                    // Test with actual password
+                    std::string passwordStr = "DEF_PASSWORD_021"; // Replace with real password
+                    std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+                    auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+                    if (flasher.securityAccessSendKey(key)) {
+                        std::cout << "SECURITY ACCESS: SUCCESS" << std::endl;
+                        std::cout << "*** WORKING SEQUENCE FOUND! ***" << std::endl;
+                        std::cout << "Use approach: " << approaches[i] << std::endl;
+
+                        flasher.cleanup();
+                        return;
+                    }
+                    else {
+                        std::cout << "SECURITY ACCESS: FAILED (wrong password?)" << std::endl;
+                    }
+                }
+                else {
+                    std::cout << "SECURITY SEED: FAILED" << std::endl;
+                }
+            }
+            else {
+                std::cout << "PROGRAMMING MODE: FAILED" << std::endl;
+            }
+
+        }
+        catch (const std::exception& e) {
+            std::cout << "EXCEPTION: " << e.what() << std::endl;
+        }
+
+        // Reset for next attempt
+        flasher.cleanup();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (!flasher.initialize()) {
+            std::cout << "Failed to reinitialize for next test" << std::endl;
+            break;
+        }
+    }
+
+    std::cout << "\nNo working sequence found. Check password or CAN settings." << std::endl;
+    flasher.cleanup();
+}
+
+void diagnoseECUState() {
+    std::cout << "=== ECU State Diagnosis ===" << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_STATE_CHECK", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) {
+        std::cout << "CAN initialization failed" << std::endl;
+        return;
+    }
+
+    // Test 1: Check if ECU responds to default session
+    std::cout << "Test 1: Default diagnostic session..." << std::endl;
+    try {
+        bool defaultSession = flasher.diagnosticSessionControl(0x01);
+        std::cout << "Default session: " << (defaultSession ? "SUCCESS" : "FAILED") << std::endl;
+
+        if (defaultSession) {
+            // Test 2: Try extended diagnostic session
+            std::cout << "Test 2: Extended diagnostic session..." << std::endl;
+            bool extendedSession = flasher.diagnosticSessionControl(0x03);
+            std::cout << "Extended session: " << (extendedSession ? "SUCCESS" : "FAILED") << std::endl;
+
+            // Test 3: Try programming session without preparation
+            std::cout << "Test 3: Direct programming session..." << std::endl;
+            bool directProgramming = flasher.diagnosticSessionControl(0x02);
+            std::cout << "Direct programming: " << (directProgramming ? "SUCCESS" : "FAILED") << std::endl;
+
+            if (!directProgramming) {
+                // Test 4: Try with minimal preparation
+                std::cout << "Test 4: Programming with functional preparation..." << std::endl;
+
+                // Just extended diagnostic functional
+                flasher.sendFunctionalCommand({ 0x10, 0x83 });
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                bool preparedProgramming = flasher.diagnosticSessionControl(0x02);
+                std::cout << "Prepared programming: " << (preparedProgramming ? "SUCCESS" : "FAILED") << std::endl;
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cout << "Session test error: " << e.what() << std::endl;
+    }
+
+    // Test 5: Raw CAN communication test
+    std::cout << "Test 5: Raw CAN communication check..." << std::endl;
+
+    TPCANMsg msg;
+    msg.ID = testConfig.canIdRequest;
+    msg.LEN = 3;
+    msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+    msg.DATA[0] = 0x02;  // Length
+    msg.DATA[1] = 0x3E;  // Tester Present
+    msg.DATA[2] = 0x00;  // Sub-function
+
+    TPCANStatus writeResult = CAN_Write(testConfig.canChannel, &msg);
+    std::cout << "Tester Present write: " << (writeResult == PCAN_ERROR_OK ? "SUCCESS" : "FAILED") << std::endl;
+
+    if (writeResult == PCAN_ERROR_OK) {
+        // Wait for response
+        bool gotResponse = false;
+        for (int attempts = 0; attempts < 200; attempts++) {
+            TPCANMsg responseMsg;
+            TPCANTimestamp timestamp;
+            TPCANStatus readResult = CAN_Read(testConfig.canChannel, &responseMsg, &timestamp);
+
+            if (readResult == PCAN_ERROR_OK && responseMsg.ID == testConfig.canIdResponse) {
+                std::cout << "Tester Present response: ";
+                for (int i = 0; i < responseMsg.LEN; ++i) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)responseMsg.DATA[i] << " ";
+                }
+                std::cout << std::dec << std::endl;
+                gotResponse = true;
+
+                // Check if it's a positive response to tester present (7E 00)
+                if (responseMsg.LEN >= 2 && responseMsg.DATA[1] == 0x7E) {
+                    std::cout << "ECU is responding normally to tester present" << std::endl;
+                }
+                else if (responseMsg.LEN >= 2 && responseMsg.DATA[1] == 0x7F) {
+                    std::cout << "ECU sent negative response - Error code: 0x" << std::hex << (int)responseMsg.DATA[3] << std::dec << std::endl;
+                }
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        if (!gotResponse) {
+            std::cout << "No response to Tester Present - ECU may not be communicating" << std::endl;
+        }
+    }
+
+    // Test 6: Listen for any CAN traffic
+    std::cout << "Test 6: Listening for any CAN traffic (5 seconds)..." << std::endl;
+    auto startTime = std::chrono::steady_clock::now();
+    int messageCount = 0;
+
+    while (std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - startTime).count() < 5) {
+
+        TPCANMsg anyMsg;
+        TPCANTimestamp timestamp;
+        TPCANStatus readResult = CAN_Read(testConfig.canChannel, &anyMsg, &timestamp);
+
+        if (readResult == PCAN_ERROR_OK) {
+            messageCount++;
+            std::cout << "CAN ID: 0x" << std::hex << std::setw(8) << std::setfill('0') << anyMsg.ID << " Data: ";
+            for (int i = 0; i < anyMsg.LEN; ++i) {
+                std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)anyMsg.DATA[i] << " ";
+            }
+            std::cout << std::dec << std::endl;
+
+            if (messageCount >= 10) {
+                std::cout << "Stopping after 10 messages..." << std::endl;
+                break;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    if (messageCount == 0) {
+        std::cout << "No CAN traffic detected - possible communication issue" << std::endl;
+    }
+    else {
+        std::cout << "Detected " << messageCount << " CAN messages" << std::endl;
+    }
+
+    flasher.cleanup();
+
+    std::cout << "\n=== DIAGNOSIS SUMMARY ===" << std::endl;
+    std::cout << "If ECU responds to default session but not programming session," << std::endl;
+    std::cout << "the CB flash may have changed the ECU's state requirements." << std::endl;
+    std::cout << "Check if ECU needs power cycle or different preparation sequence." << std::endl;
+}
+
+void testASW0AfterECUPowerCycle() {
+    std::cout << "\n=== Testing ASW0 After ECU State Check ===" << std::endl;
+    std::cout << "*** IMPORTANT: Power cycle the ECU before running this test ***" << std::endl;
+    std::cout << "Press Enter when ECU has been power cycled...";
+    std::cin.get();
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_ASW0_AFTER_RESET", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Try the complete sequence fresh
+        std::cout << "Step 1: Extended diagnostic session..." << std::endl;
+        if (!flasher.diagnosticSessionControl(0x03)) {
+            std::cout << "Extended session failed" << std::endl;
+            return;
+        }
+
+        std::cout << "Step 2: Programming session..." << std::endl;
+        if (!flasher.diagnosticSessionControl(0x02)) {
+            std::cout << "Programming session failed even after power cycle" << std::endl;
+
+            // Try with preparation commands
+            std::cout << "Trying with preparation sequence..." << std::endl;
+            flasher.sendFunctionalCommand({ 0x10, 0x83 });
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            flasher.sendFunctionalCommand({ 0x85, 0x82 });
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+            if (flasher.diagnosticSessionControl(0x02)) {
+                std::cout << "Programming session SUCCESS with preparation" << std::endl;
+
+                // Continue with security access
+                auto seed = flasher.securityAccessRequestSeed();
+                if (!seed.empty()) {
+                    std::cout << "Security seed obtained successfully" << std::endl;
+                    std::cout << "ECU communication is working - ready for ASW0 flashing" << std::endl;
+                }
+            }
+            else {
+                std::cout << "Programming session still failed - may need different approach" << std::endl;
+            }
+            return;
+        }
+
+        std::cout << "Programming session SUCCESS" << std::endl;
+        std::cout << "ECU is ready for ASW0 flashing" << std::endl;
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Test error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void debugASW0FlashingIssues() {
+    std::cout << "=== Debugging ASW0 Flashing Issues ===" << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_ASW0_DEBUG", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) {
+        std::cout << "Failed to initialize CAN" << std::endl;
+        return;
+    }
+
+    try {
+        // Standard preparation sequence
+        std::cout << "Step 1: Preparation sequence..." << std::endl;
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        // Programming mode
+        std::cout << "Step 2: Enter programming mode..." << std::endl;
+        if (!flasher.diagnosticSessionControl(0x02)) {
+            std::cout << "FAILED: Cannot enter programming mode" << std::endl;
+            return;
+        }
+
+        // Security access
+        std::cout << "Step 3: Security access..." << std::endl;
+        auto seed = flasher.securityAccessRequestSeed();
+        if (seed.empty()) {
+            std::cout << "FAILED: Cannot get security seed" << std::endl;
+            return;
+        }
+
+        std::string passwordStr = "DEF_PASSWORD_021"; // Use your actual password
+        std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+        auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+        if (!flasher.securityAccessSendKey(key)) {
+            std::cout << "FAILED: Security access denied" << std::endl;
+            return;
+        }
+
+        std::cout << "SUCCESS: Security unlocked" << std::endl;
+
+        // Add fingerprint data (as per reference document)
+        std::cout << "Step 4: Writing fingerprint data..." << std::endl;
+        try {
+            // Tester serial number
+            std::vector<uint8_t> serialCmd = { 0x2E, 0xF1, 0x98 };
+            std::string serialNum = "TEST123456";
+            serialCmd.insert(serialCmd.end(), serialNum.begin(), serialNum.end());
+
+            auto serialResp = flasher.sendUDSRequestWithMultiFrame(serialCmd, 2000);
+            if (serialResp.size() >= 2 && serialResp[0] == 0x6E) {
+                std::cout << "Fingerprint serial: SUCCESS" << std::endl;
+            }
+            else {
+                std::cout << "Fingerprint serial: FAILED" << std::endl;
+            }
+
+            // Programming date
+            std::vector<uint8_t> dateCmd = { 0x2E, 0xF1, 0x99 };
+            std::string progDate = "22092025"; // DDMMYYYY
+            dateCmd.insert(dateCmd.end(), progDate.begin(), progDate.end());
+
+            auto dateResp = flasher.sendUDSRequestWithMultiFrame(dateCmd, 2000);
+            if (dateResp.size() >= 2 && dateResp[0] == 0x6E) {
+                std::cout << "Fingerprint date: SUCCESS" << std::endl;
+            }
+            else {
+                std::cout << "Fingerprint date: FAILED" << std::endl;
+            }
+        }
+        catch (const std::exception& e) {
+            std::cout << "Fingerprint data failed: " << e.what() << std::endl;
+        }
+
+        // Test ASW0 erase with extended timeout
+        std::cout << "Step 5: Testing ASW0 erase (this may take longer)..." << std::endl;
+
+        auto eraseStartTime = std::chrono::steady_clock::now();
+        bool eraseResult = false;
+
+        try {
+            // Send erase command manually with extended timeout
+            std::vector<uint8_t> eraseCmd = { 0x31, 0x01, 0xFF, 0x00, 0x01, 0x01 }; // ASW0 = 0x01
+            auto eraseResp = flasher.sendUDSRequestWithMultiFrame(eraseCmd, 60000); // 60 second timeout
+
+            if (eraseResp.size() >= 5 && eraseResp[0] == 0x71 && eraseResp[4] == 0x00) {
+                eraseResult = true;
+            }
+        }
+        catch (const std::exception& e) {
+            std::cout << "ASW0 erase exception: " << e.what() << std::endl;
+        }
+
+        auto eraseEndTime = std::chrono::steady_clock::now();
+        auto eraseDuration = std::chrono::duration_cast<std::chrono::seconds>(eraseEndTime - eraseStartTime);
+
+        if (eraseResult) {
+            std::cout << "ASW0 ERASE: SUCCESS (took " << eraseDuration.count() << " seconds)" << std::endl;
+
+            // Now test request download for ASW0
+            std::cout << "Step 6: Testing ASW0 request download..." << std::endl;
+
+            uint32_t asw0Address = 0x09020000;
+            uint32_t asw0Size = 0x003A0000; // Full ASW0 size
+
+            uint16_t maxBlockSize = flasher.requestDownload(asw0Address, asw0Size);
+            if (maxBlockSize > 0) {
+                std::cout << "ASW0 REQUEST DOWNLOAD: SUCCESS" << std::endl;
+                std::cout << "Max block size: " << maxBlockSize << " bytes" << std::endl;
+                std::cout << "Estimated transfer blocks: " << (asw0Size / (maxBlockSize - 2)) << std::endl;
+                std::cout << "Estimated transfer time: ~" << ((asw0Size / (maxBlockSize - 2)) * 50 / 1000) << " seconds" << std::endl;
+
+                // Test with small dummy data to verify transfer mechanism
+                std::cout << "Step 7: Testing small data transfer..." << std::endl;
+                std::vector<uint8_t> testData(1024, 0xFF); // 1KB of test data
+
+                if (flasher.transferData(testData, maxBlockSize)) {
+                    std::cout << "TEST TRANSFER: SUCCESS" << std::endl;
+
+                    if (flasher.requestTransferExit()) {
+                        std::cout << "TRANSFER EXIT: SUCCESS" << std::endl;
+                        std::cout << "*** ASW0 flash mechanism appears to be working! ***" << std::endl;
+                        std::cout << "Issue is likely with actual firmware data or file parsing." << std::endl;
+                    }
+                }
+            }
+            else {
+                std::cout << "ASW0 REQUEST DOWNLOAD: FAILED" << std::endl;
+            }
+        }
+        else {
+            std::cout << "ASW0 ERASE: FAILED (took " << eraseDuration.count() << " seconds)" << std::endl;
+            std::cout << "This is likely the root cause of ASW0 flashing issues." << std::endl;
+        }
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Debug error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+// Enhanced ASW0 flashing function with proper error handling
+void flashASW0WithProperSequence() {
+    std::cout << "=== Flashing ASW0 with Proper Sequence ===" << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_ASW0_ENHANCED", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Preparation
+        //flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        //std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        //flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        //std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        //flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        //std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        if (!flasher.diagnosticSessionControl(0x02)) return;
+
+        // Security access
+        auto seed = flasher.securityAccessRequestSeed();
+        std::string passwordStr = "DEF_PASSWORD_021";
+        std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+        auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+        if (!flasher.securityAccessSendKey(key)) return;
+
+        // Load firmware file
+        std::string hexFile = "firmware/rc5_6_40_asw0.hex";
+        std::vector<uint8_t> firmwareData;
+
+        try {
+            firmwareData = parseIntelHexFile(hexFile);
+            std::cout << "Loaded ASW0 firmware: " << firmwareData.size() << " bytes" << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cout << "Cannot load firmware file: " << e.what() << std::endl;
+            return;
+        }
+
+        // Erase ASW0 only
+        std::cout << "Step 1: Erasing ASW0..." << std::endl;
+        if (!flasher.eraseMemory(0x01)) {
+            std::cout << "ASW0 erase failed" << std::endl;
+            return;
+        }
+
+        // Request download for ASW0
+        std::cout << "Step 3: Request download for ASW0..." << std::endl;
+        uint32_t asw0Address = 0x09020000;
+        uint16_t maxBlockSize = flasher.requestDownload(asw0Address, (uint32_t)firmwareData.size());
+        if (maxBlockSize == 0) return;
+
+        // Transfer data
+        std::cout << "Step 3: Transferring ASW0 data..." << std::endl;
+        if (!flasher.transferData(firmwareData, maxBlockSize)) return;
+
+        // Transfer exit
+        std::cout << "Step 4: Transfer exit..." << std::endl;
+        if (!flasher.requestTransferExit()) return;
+
+        // Memory check
+        std::cout << "Step 5: Memory verification..." << std::endl;
+        if (!flasher.checkMemory(0x01)) return;
+
+        std::cout << "=== ASW0 FLASHING COMPLETE ===" << std::endl;
+
+        // Reset ECU
+        flasher.ecuReset();
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Enhanced ASW0 flash error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testCBFirstApproach() {
+    std::cout << "Testing CB-First Approach..." << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_CB_FIRST", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Standard preparation and unlock sequence
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        if (!flasher.diagnosticSessionControl(0x02)) return;
+
+        auto seed = flasher.securityAccessRequestSeed();
+        std::string passwordStr = "DEF_PASSWORD_021";
+        std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+        auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+        if (!flasher.securityAccessSendKey(key)) return;
+
+        std::cout << "=== FLASHING CB FIRST ===" << std::endl;
+
+        // Check if you have a CB hex file
+        std::string cbHexFile = "firmware/rc5_6_40_cb.hex";
+        std::ifstream cbFile(cbHexFile);
+        if (cbFile.is_open()) {
+            cbFile.close();
+
+            auto cbData = parseIntelHexFile(cbHexFile);
+            std::cout << "CB firmware loaded: " << cbData.size() << " bytes" << std::endl;
+
+            // Flash CB
+            if (flasher.eraseMemory(0x00)) {
+                uint32_t cbAddress = 0x08FD8000; // CB address from reference
+                uint16_t maxBlockSize = flasher.requestDownload(cbAddress, (uint32_t)cbData.size());
+
+                if (maxBlockSize > 0) {
+                    if (flasher.transferData(cbData, maxBlockSize) &&
+                        flasher.requestTransferExit() &&
+                        flasher.checkMemory(0x00)) {
+
+                        std::cout << "CB flashed successfully!" << std::endl;
+                        std::cout << "Now resetting to let new CB handle ASW0/DS0..." << std::endl;
+
+                        flasher.ecuReset();
+                        std::this_thread::sleep_for(std::chrono::seconds(3));
+
+                        // Try ASW0/DS0 erase after CB update
+                        // You'd need to restart the whole sequence here
+                    }
+                }
+            }
+        }
+        else {
+            std::cout << "No CB firmware file found at: " << cbHexFile << std::endl;
+        }
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testSequentialErase() {
+    std::cout << "Testing Sequential Erase (CB -> ASW0 -> DS0)..." << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_SEQ_ERASE", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Setup and unlock (same as before)
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        if (!flasher.diagnosticSessionControl(0x02)) return;
+
+        auto seed = flasher.securityAccessRequestSeed();
+        if (seed.empty()) return;
+
+        std::string passwordStr = "DEF_PASSWORD_021";
+        std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+        auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+        if (!flasher.securityAccessSendKey(key)) return;
+
+        std::cout << "Successfully unlocked - testing sequential erase..." << std::endl;
+
+        // Test different erase sequences
+        std::cout << "\n=== SEQUENCE 1: CB -> ASW0 -> DS0 ===" << std::endl;
+
+        // Step 1: Erase CB (we know this works)
+        std::cout << "Step 1: Erasing CB..." << std::endl;
+        if (flasher.eraseMemory(0x00)) {
+            std::cout << "CB erase: SUCCESS" << std::endl;
+
+            // Step 2: Try ASW0 after CB is erased
+            std::cout << "Step 2: Erasing ASW0 (after CB)..." << std::endl;
+            if (flasher.eraseMemory(0x01)) {
+                std::cout << "ASW0 erase: SUCCESS" << std::endl;
+
+                // Step 3: Try DS0 after ASW0 is erased
+                std::cout << "Step 3: Erasing DS0 (after ASW0)..." << std::endl;
+                if (flasher.eraseMemory(0x02)) {
+                    std::cout << "DS0 erase: SUCCESS" << std::endl;
+                    std::cout << "*** ALL AREAS ERASED SUCCESSFULLY! ***" << std::endl;
+                }
+                else {
+                    std::cout << "DS0 erase: FAILED" << std::endl;
+                }
+            }
+            else {
+                std::cout << "ASW0 erase: FAILED" << std::endl;
+            }
+        }
+
+        // Alternative: Try erasing ASW0 and DS0 together
+        std::cout << "\n=== ALTERNATIVE: Try Combined Erase Command ===" << std::endl;
+
+        // Reset and unlock again
+        flasher.cleanup();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+        if (flasher.initialize()) {
+            // Quick re-unlock
+            flasher.sendFunctionalCommand({ 0x10, 0x83 });
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            flasher.sendFunctionalCommand({ 0x85, 0x82 });
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+            if (flasher.diagnosticSessionControl(0x02)) {
+                seed = flasher.securityAccessRequestSeed();
+                key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+                flasher.securityAccessSendKey(key);
+
+                // Try different erase command formats
+                std::vector<std::vector<uint8_t>> combinedEraseCmds = {
+                    {0x31, 0x01, 0xFF, 0x00, 0x02, 0x01, 0x02}, // Erase both ASW0 and DS0
+                    {0x31, 0x01, 0xFF, 0x01, 0x01, 0x01},       // Alternative format
+                    {0x31, 0x01, 0xFF, 0x00, 0x01, 0xFF},       // Erase all applications
+                };
+
+                for (size_t i = 0; i < combinedEraseCmds.size(); ++i) {
+                    std::cout << "Trying combined erase format " << (i + 1) << ": ";
+                    for (uint8_t b : combinedEraseCmds[i]) {
+                        std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                    }
+                    std::cout << std::dec << std::endl;
+
+                    try {
+                        auto response = flasher.sendUDSRequestWithMultiFrame(combinedEraseCmds[i], 30000);
+                        std::cout << "Response: ";
+                        for (uint8_t b : response) {
+                            std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                        }
+                        std::cout << std::dec << std::endl;
+
+                        if (response.size() >= 2 && response[0] == 0x71) {
+                            std::cout << "SUCCESS with combined erase format " << (i + 1) << "!" << std::endl;
+                            break;
+                        }
+                    }
+                    catch (const std::exception& e) {
+                        std::cout << "Format " << (i + 1) << " failed: " << e.what() << std::endl;
+                    }
+                }
+            }
+        }
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void debugRC40EraseOperation() {
+    std::cout << "Debugging RC40 Erase Operation..." << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_DEBUG", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // Preparation and security access
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        if (flasher.diagnosticSessionControl(0x02)) {
+            auto seed = flasher.securityAccessRequestSeed();
+            if (!seed.empty()) {
+                std::string passwordStr = "DEF_PASSWORD_021";
+                std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+                auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+                if (flasher.securityAccessSendKey(key)) {
+                    std::cout << "Successfully unlocked - now testing erase operations..." << std::endl;
+
+                    // Test different area IDs to see which ones work
+                    std::vector<std::pair<uint8_t, std::string>> testAreas = {
+                        {0x00, "CB (Customer Boot)"},
+                        {0x01, "ASW0 (Application Software)"},
+                        {0x02, "DS0 (Data Section)"}
+                    };
+
+                    for (const auto& [areaId, description] : testAreas) {
+                        std::cout << "\nTesting erase for Area " << (int)areaId << " (" << description << ")..." << std::endl;
+
+                        try {
+                            // Send erase command manually to get detailed response
+                            std::vector<uint8_t> eraseCmd = { 0x31, 0x01, 0xFF, 0x00, 0x01, areaId };
+                            auto response = flasher.sendUDSRequestWithMultiFrame(eraseCmd, 30000); // Long timeout
+
+                            std::cout << "Erase response: ";
+                            for (uint8_t b : response) {
+                                std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                            }
+                            std::cout << std::dec << std::endl;
+
+                            if (response.size() >= 2) {
+                                if (response[0] == 0x71) {
+                                    std::cout << "SUCCESS: Area " << (int)areaId << " erased successfully!" << std::endl;
+                                }
+                                else if (response[0] == 0x7F) {
+                                    uint8_t service = response[1];
+                                    uint8_t errorCode = response.size() >= 3 ? response[2] : 0x00;
+                                    std::cout << "NEGATIVE RESPONSE:" << std::endl;
+                                    std::cout << "  Service: 0x" << std::hex << (int)service << std::dec << std::endl;
+                                    std::cout << "  Error Code: 0x" << std::hex << (int)errorCode << std::dec << " (";
+
+                                    // Decode common error codes
+                                    switch (errorCode) {
+                                    case 0x12: std::cout << "subFunctionNotSupported"; break;
+                                    case 0x13: std::cout << "incorrectMessageLengthOrInvalidFormat"; break;
+                                    case 0x22: std::cout << "conditionsNotCorrect"; break;
+                                    case 0x31: std::cout << "requestOutOfRange"; break;
+                                    case 0x33: std::cout << "securityAccessDenied"; break;
+                                    case 0x72: std::cout << "generalProgrammingFailure"; break;
+                                    case 0x78: std::cout << "requestCorrectlyReceived-ResponsePending"; break;
+                                    default: std::cout << "Unknown"; break;
+                                    }
+                                    std::cout << ")" << std::endl;
+                                }
+                            }
+                        }
+                        catch (const std::exception& e) {
+                            std::cout << "Erase failed with exception: " << e.what() << std::endl;
+                        }
+
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+
+                    // Test if we can read any memory info
+                    std::cout << "\nTesting memory info reads..." << std::endl;
+                    try {
+                        // Try to read some diagnostic identifiers
+                        std::vector<std::vector<uint8_t>> testReads = {
+                            {0x22, 0xF1, 0x90}, // Software version
+                            {0x22, 0xF1, 0x91}, // Application version
+                            {0x22, 0xF1, 0x92}, // Calibration version  
+                            {0x22, 0xF1, 0x86}, // Active diagnostic session
+                        };
+
+                        for (const auto& readCmd : testReads) {
+                            try {
+                                auto readResp = flasher.sendUDSRequestWithMultiFrame(readCmd, 2000);
+                                std::cout << "Read ";
+                                for (uint8_t b : readCmd) std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                                std::cout << "-> ";
+                                for (uint8_t b : readResp) std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                                std::cout << std::dec << std::endl;
+                            }
+                            catch (...) {
+                                // Ignore read failures
+                            }
+                        }
+                    }
+                    catch (...) {
+                        // Ignore diagnostic read failures
+                    }
+                }
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cout << "Debug error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testRC40ASW0AndDS0HexFlashing() {
+    std::cout << "Testing RC40 ASW0+DS0 Combined HEX Flashing..." << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_COMBINED", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) return;
+
+    try {
+        // ... preparation and security access code same as before ...
+
+        std::cout << "=== LOADING HEX FILE ===" << std::endl;
+        std::string hexFile = "firmware/rc5_6_40_asw0.hex";
+        auto firmwareData = parseIntelHexFile(hexFile);
+
+        std::cout << "Total firmware size: " << firmwareData.size() << " bytes" << std::endl;
+
+        // Split firmware data at ASW0/DS0 boundary
+        uint32_t asw0Start = 0x09020000;
+        uint32_t asw0End = 0x093BFFFF;
+        uint32_t ds0Start = 0x093C0000;
+
+        uint32_t asw0Size = asw0End - asw0Start + 1;      // 0x3A0000 bytes
+        uint32_t ds0Offset = ds0Start - asw0Start;        // Offset in firmware data
+
+        // Extract ASW0 portion (first part of firmware)
+        std::vector<uint8_t> asw0Data(firmwareData.begin(), firmwareData.begin() + asw0Size);
+
+        // Extract DS0 portion (remaining part)
+        std::vector<uint8_t> ds0Data;
+        if (firmwareData.size() > ds0Offset) {
+            ds0Data = std::vector<uint8_t>(firmwareData.begin() + ds0Offset, firmwareData.end());
+        }
+
+        std::cout << "ASW0 portion: " << asw0Data.size() << " bytes" << std::endl;
+        std::cout << "DS0 portion: " << ds0Data.size() << " bytes" << std::endl;
+
+        // Flash ASW0 first
+        std::cout << "=== FLASHING ASW0 ===" << std::endl;
+        if (!flasher.eraseMemory(0x01)) { // ASW0 area ID
+            std::cout << "Failed to erase ASW0" << std::endl;
+            return;
+        }
+
+        uint16_t maxBlockSize = flasher.requestDownload(asw0Start, (uint32_t)asw0Data.size());
+        if (maxBlockSize == 0) return;
+
+        if (!flasher.transferData(asw0Data, maxBlockSize)) return;
+        if (!flasher.requestTransferExit()) return;
+        if (!flasher.checkMemory(0x01)) return;
+
+        // Flash DS0 if there's data for it
+        if (!ds0Data.empty()) {
+            std::cout << "=== FLASHING DS0 ===" << std::endl;
+            if (!flasher.eraseMemory(0x02)) { // DS0 area ID
+                std::cout << "Failed to erase DS0" << std::endl;
+                return;
+            }
+
+            maxBlockSize = flasher.requestDownload(ds0Start, (uint32_t)ds0Data.size());
+            if (maxBlockSize == 0) return;
+
+            if (!flasher.transferData(ds0Data, maxBlockSize)) return;
+            if (!flasher.requestTransferExit()) return;
+            if (!flasher.checkMemory(0x02)) return;
+        }
+
+        std::cout << "=== SUCCESS ===" << std::endl;
+        flasher.ecuReset();
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Flash error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
+void testRC40ASW0HexFlashing() {
+    std::cout << "Testing RC40 ASW0 Flashing with Intel HEX File..." << std::endl;
+
+    resetPCANChannel();
+
+    RC40Flasher::ControllerConfig testConfig("RC5-6/40", "RC40_ASW0_HEX", PCAN_USBBUS1);
+    testConfig.canIdRequest = 0x18DA01FA;
+    testConfig.canIdResponse = 0x18DAFA01;
+
+    RC40Flasher::RC40FlasherDevice flasher(testConfig);
+
+    if (!flasher.initialize()) {
+        std::cout << "CAN initialization failed" << std::endl;
+        return;
+    }
+
+    try {
+        std::cout << "=== PREPARATION PHASE ===" << std::endl;
+        // Functional addressing preparation
+        flasher.sendFunctionalCommand({ 0x10, 0x83 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x85, 0x82 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 });
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        std::cout << "=== PROGRAMMING MODE ===" << std::endl;
+        if (!flasher.diagnosticSessionControl(0x02)) {
+            std::cout << "Failed to enter programming mode" << std::endl;
+            return;
+        }
+
+        std::cout << "=== SECURITY ACCESS ===" << std::endl;
+        auto seed = flasher.securityAccessRequestSeed();
+        if (seed.empty()) {
+            std::cout << "Failed to get security seed" << std::endl;
+            return;
+        }
+
+        std::string passwordStr = "DEF_PASSWORD_021";
+        std::vector<uint8_t> password(passwordStr.begin(), passwordStr.end());
+        auto key = RC40Flasher::AES128Security::calculateKeyFromSeed(seed, password);
+
+        if (!flasher.securityAccessSendKey(key)) {
+            std::cout << "Security access failed" << std::endl;
+            return;
+        }
+
+        std::cout << "=== LOADING HEX FILE ===" << std::endl;
+
+        // Parse Intel HEX file
+        std::string hexFile = "firmware/rc5_6_40_asw0.hex";
+        std::vector<uint8_t> firmwareData;
+
+        try {
+            firmwareData = parseIntelHexFile(hexFile);
+        }
+        catch (const std::exception& e) {
+            std::cout << "ERROR: Failed to parse HEX file: " << e.what() << std::endl;
+            std::cout << "Please place your ASW0 firmware file at: " << hexFile << std::endl;
+            flasher.cleanup();
+            return;
+        }
+
+        std::cout << "Parsed HEX file successfully: " << firmwareData.size() << " bytes" << std::endl;
+
+        std::cout << "=== ASW0 FLASHING ===" << std::endl;
+
+        // ASW0 memory layout for RC5-6/40
+        uint8_t asw0AreaId = 0x01;
+        uint32_t asw0Address = 0x09020000;
+
+        std::cout << "Step 1: Erasing ASW0 memory area..." << std::endl;
+        if (!flasher.eraseMemory(asw0AreaId)) {
+            std::cout << "Failed to erase ASW0 memory" << std::endl;
+            return;
+        }
+
+        std::cout << "Step 2: Request download..." << std::endl;
+        uint16_t maxBlockSize = flasher.requestDownload(asw0Address, (uint32_t)firmwareData.size());
+        if (maxBlockSize == 0) {
+            std::cout << "Failed to request download" << std::endl;
+            return;
+        }
+
+        std::cout << "Step 3: Transferring firmware data (" << firmwareData.size() << " bytes)..." << std::endl;
+        std::cout << "Max block size: " << maxBlockSize << " bytes" << std::endl;
+
+        // Calculate estimated time
+        size_t totalBlocks = (firmwareData.size() + maxBlockSize - 3) / (maxBlockSize - 2);
+        std::cout << "Estimated blocks to transfer: " << totalBlocks << std::endl;
+        std::cout << "Estimated time: ~" << (totalBlocks * 50 / 1000) << " seconds" << std::endl;
+
+        if (!flasher.transferData(firmwareData, maxBlockSize)) {
+            std::cout << "Failed to transfer firmware data" << std::endl;
+            return;
+        }
+
+        std::cout << "Step 4: Transfer exit..." << std::endl;
+        if (!flasher.requestTransferExit()) {
+            std::cout << "Failed to exit transfer" << std::endl;
+            return;
+        }
+
+        std::cout << "Step 5: Memory verification..." << std::endl;
+        if (!flasher.checkMemory(asw0AreaId)) {
+            std::cout << "Memory verification failed!" << std::endl;
+            return;
+        }
+
+        std::cout << "=== FINALIZATION ===" << std::endl;
+        std::cout << "Resetting ECU..." << std::endl;
+        if (!flasher.ecuReset()) {
+            std::cout << "ECU reset failed" << std::endl;
+            return;
+        }
+
+        std::cout << "Waiting for ECU reboot..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+
+        std::cout << "\n*** FLASHING COMPLETE! ***" << std::endl;
+        std::cout << "ASW0 (Application Software) has been successfully flashed from HEX file!" << std::endl;
+        std::cout << "Firmware size: " << firmwareData.size() << " bytes" << std::endl;
+        std::cout << "RC40 controller should now be running the new application." << std::endl;
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Flash error: " << e.what() << std::endl;
+    }
+
+    flasher.cleanup();
+}
+
 void testRC40FastSecurityAccess() {
     std::cout << "Testing RC40 Security Access with Faster Sequence..." << std::endl;
 
@@ -3527,8 +5040,18 @@ int main(int, char**)
     //testRC40CorrectSequence();
     //testRC40SecurityAccess();
     //testRC40SecurityUnlock();
-    testRC40FastSecurityAccess();
-
+    //testRC40FastSecurityAccess();
+    //testRC40ASW0HexFlashing();
+    //testRC40ASW0AndDS0HexFlashing();
+    //debugRC40EraseOperation();
+    //testSequentialErase();
+    //testCBFirstApproach();
+    //debugASW0FlashingIssues();
+    //diagnoseECUState();
+    //testASW0AfterECUPowerCycle();
+    //findWorkingPreparationSequence();
+    //testOfficialToolSequence();
+    flashASW0AndDS0Split();
 
     // Create application window
     //ImGui_ImplWin32_EnableDpiAwareness();

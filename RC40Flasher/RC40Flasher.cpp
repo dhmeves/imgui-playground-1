@@ -45,7 +45,11 @@ namespace RC40Flasher {
     bool RC40FlasherDevice::sendFunctionalCommand(const std::vector<uint8_t>& command) {
         TPCANMsg msg;
         msg.ID = 0x18DB33F1;  // Use confirmed functional address
-        msg.LEN = static_cast<BYTE>(command.size() + 1);
+        msg.LEN = 8; // Always use 8-byte frames
+        // Pad unused bytes with 0x55 (like official tool)
+        for (int i = command.size() + 1; i < 8; ++i) {
+            msg.DATA[i] = 0x55;
+        }
         msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
         msg.DATA[0] = static_cast<BYTE>(command.size());
 
@@ -66,7 +70,11 @@ namespace RC40Flasher {
             // Single frame transmission
             TPCANMsg msg;
             msg.ID = config.canIdRequest;
-            msg.LEN = static_cast<BYTE>(request.size() + 1);
+            msg.LEN = 8; // Always use 8-byte frames
+            // Pad unused bytes with 0x55 (like official tool)
+            for (int i = request.size() + 1; i < 8; ++i) {
+                msg.DATA[i] = 0x55;
+            }
             msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
             msg.DATA[0] = static_cast<BYTE>(request.size());
             for (size_t i = 0; i < request.size(); ++i) {
@@ -214,11 +222,14 @@ namespace RC40Flasher {
                         // Send Flow Control
                         TPCANMsg fcMsg;
                         fcMsg.ID = config.canIdRequest;
-                        fcMsg.LEN = 3;
+                        fcMsg.LEN = 8;
                         fcMsg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
                         fcMsg.DATA[0] = 0x30;  // Flow Control - CTS
                         fcMsg.DATA[1] = 0x00;  // Block Size
                         fcMsg.DATA[2] = 0x00;  // Separation Time
+                        for (int i = 3; i < 8; i++) {
+                            fcMsg.DATA[i] = 0x00; // add padding
+                        }
 
                         CAN_Write(config.canChannel, &fcMsg);
 
@@ -280,7 +291,11 @@ namespace RC40Flasher {
 
         TPCANMsg msg;
         msg.ID = config.canIdRequest;
-        msg.LEN = static_cast<BYTE>(request.size() + 1);
+        msg.LEN = 8; // Always use 8-byte frames
+        // Pad unused bytes with 0x55 (like official tool)
+        for (int i = request.size() + 1; i < 8; ++i) {
+            msg.DATA[i] = 0x55;
+        }
         msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;  // Changed to extended
 
         // ISO-TP single frame: first byte is length
@@ -400,18 +415,44 @@ namespace RC40Flasher {
 
     bool RC40FlasherDevice::eraseMemory(uint8_t areaId) {
         try {
-            std::vector<uint8_t> request = { 0x31, 0x01, 0xFF, 0x00, 0x01, areaId };
-            auto response = sendUDSRequest(request, 30000); // Long timeout for erase
+            // Send erase command manually to get detailed response
+            std::vector<uint8_t> eraseCmd = { 0x31, 0x01, 0xFF, 0x00, 0x01, areaId };
+            auto response = sendUDSRequestWithMultiFrame(eraseCmd, 30000); // Long timeout
 
-            if (response.size() >= 5 && response[0] == 0x71 && response[4] == 0x00) {
-                std::cout << "[" << config.controllerId << "] Erased memory area "
-                    << (int)areaId << std::endl;
-                return true;
+            std::cout << "Erase response: ";
+            for (uint8_t b : response) {
+                std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+            }
+            std::cout << std::dec << std::endl;
+
+            if (response.size() >= 2) {
+                if (response[0] == 0x71) {
+                    std::cout << "SUCCESS: Area " << (int)areaId << " erased successfully!" << std::endl;
+                }
+                else if (response[0] == 0x7F) {
+                    uint8_t service = response[1];
+                    uint8_t errorCode = response.size() >= 3 ? response[2] : 0x00;
+                    std::cout << "NEGATIVE RESPONSE:" << std::endl;
+                    std::cout << "  Service: 0x" << std::hex << (int)service << std::dec << std::endl;
+                    std::cout << "  Error Code: 0x" << std::hex << (int)errorCode << std::dec << " (";
+
+                    // Decode common error codes
+                    switch (errorCode) {
+                    case 0x12: std::cout << "subFunctionNotSupported"; break;
+                    case 0x13: std::cout << "incorrectMessageLengthOrInvalidFormat"; break;
+                    case 0x22: std::cout << "conditionsNotCorrect"; break;
+                    case 0x31: std::cout << "requestOutOfRange"; break;
+                    case 0x33: std::cout << "securityAccessDenied"; break;
+                    case 0x72: std::cout << "generalProgrammingFailure"; break;
+                    case 0x78: std::cout << "requestCorrectlyReceived-ResponsePending"; break;
+                    default: std::cout << "Unknown"; break;
+                    }
+                    std::cout << ")" << std::endl;
+                }
             }
         }
         catch (const std::exception& e) {
-            std::cerr << "[" << config.controllerId << "] Erase memory failed: "
-                << e.what() << std::endl;
+            std::cout << "Erase failed with exception: " << e.what() << std::endl;
         }
         return false;
     }
@@ -432,7 +473,7 @@ namespace RC40Flasher {
             request.push_back((size >> 8) & 0xFF);
             request.push_back(size & 0xFF);
 
-            auto response = sendUDSRequest(request, 5000);
+            auto response = sendUDSRequestWithMultiFrame(request, 5000);  // Use multi-frame version
 
             if (response.size() >= 4 && response[0] == 0x74) {
                 uint16_t maxBlockLength = (response[2] << 8) | response[3];
@@ -462,7 +503,7 @@ namespace RC40Flasher {
             request.insert(request.end(), data.begin() + offset, data.begin() + offset + blockSize);
 
             try {
-                auto response = sendUDSRequest(request, 5000);
+                auto response = sendUDSRequestWithMultiFrame(request, 5000);  // Multi-frame version
 
                 if (!(response.size() >= 2 && response[0] == 0x76 &&
                     response[1] == sequenceCounter)) {
@@ -490,7 +531,7 @@ namespace RC40Flasher {
     bool RC40FlasherDevice::requestTransferExit() {
         try {
             std::vector<uint8_t> request = { 0x37 };
-            auto response = sendUDSRequest(request, 5000);
+            auto response = sendUDSRequestWithMultiFrame(request, 5000);  // Multi-frame
 
             if (response.size() >= 1 && response[0] == 0x77) {
                 std::cout << "[" << config.controllerId << "] Transfer exit successful" << std::endl;
@@ -507,7 +548,7 @@ namespace RC40Flasher {
     bool RC40FlasherDevice::checkMemory(uint8_t areaId) {
         try {
             std::vector<uint8_t> request = { 0x31, 0x01, 0x02, 0x02, 0x01, areaId };
-            auto response = sendUDSRequest(request, 10000);
+            auto response = sendUDSRequestWithMultiFrame(request, 10000);  // Multi-frame
 
             if (response.size() >= 5 && response[0] == 0x71 && response[4] == 0x00) {
                 std::cout << "[" << config.controllerId << "] Memory check passed for area "
@@ -525,7 +566,7 @@ namespace RC40Flasher {
     bool RC40FlasherDevice::ecuReset() {
         try {
             std::vector<uint8_t> request = { 0x11, 0x01 };
-            auto response = sendUDSRequest(request, 2000);
+            auto response = sendUDSRequestWithMultiFrame(request, 2000);
 
             if (response.size() >= 2 && response[0] == 0x51) {
                 std::cout << "[" << config.controllerId << "] ECU reset successful" << std::endl;
