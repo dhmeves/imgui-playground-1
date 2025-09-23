@@ -415,46 +415,29 @@ namespace RC40Flasher {
 
     bool RC40FlasherDevice::eraseMemory(uint8_t areaId) {
         try {
-            // Send erase command manually to get detailed response
-            std::vector<uint8_t> eraseCmd = { 0x31, 0x01, 0xFF, 0x00, 0x01, areaId };
-            auto response = sendUDSRequestWithMultiFrame(eraseCmd, 30000); // Long timeout
+            std::vector<uint8_t> request = { 0x31, 0x01, 0xFF, 0x00, 0x01, areaId };
+            auto response = sendUDSRequestWithMultiFrame(request, 30000);
 
-            std::cout << "Erase response: ";
-            for (uint8_t b : response) {
-                std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+            // Check for positive response: 71 01 FF 00 00
+            if (response.size() >= 5 &&
+                response[0] == 0x71 &&    // Positive response to routine control
+                response[1] == 0x01 &&    // Start routine echo
+                response[2] == 0xFF &&    // Routine ID high byte
+                response[3] == 0x00 &&    // Routine ID low byte  
+                response[4] == 0x00) {    // Success status
+
+                std::cout << "[" << config.controllerId << "] Erased memory area " << (int)areaId << std::endl;
+                return true;
             }
-            std::cout << std::dec << std::endl;
 
-            if (response.size() >= 2) {
-                if (response[0] == 0x71) {
-                    std::cout << "SUCCESS: Area " << (int)areaId << " erased successfully!" << std::endl;
-                }
-                else if (response[0] == 0x7F) {
-                    uint8_t service = response[1];
-                    uint8_t errorCode = response.size() >= 3 ? response[2] : 0x00;
-                    std::cout << "NEGATIVE RESPONSE:" << std::endl;
-                    std::cout << "  Service: 0x" << std::hex << (int)service << std::dec << std::endl;
-                    std::cout << "  Error Code: 0x" << std::hex << (int)errorCode << std::dec << " (";
+            std::cout << "[" << config.controllerId << "] Erase failed - unexpected response" << std::endl;
+            return false;
 
-                    // Decode common error codes
-                    switch (errorCode) {
-                    case 0x12: std::cout << "subFunctionNotSupported"; break;
-                    case 0x13: std::cout << "incorrectMessageLengthOrInvalidFormat"; break;
-                    case 0x22: std::cout << "conditionsNotCorrect"; break;
-                    case 0x31: std::cout << "requestOutOfRange"; break;
-                    case 0x33: std::cout << "securityAccessDenied"; break;
-                    case 0x72: std::cout << "generalProgrammingFailure"; break;
-                    case 0x78: std::cout << "requestCorrectlyReceived-ResponsePending"; break;
-                    default: std::cout << "Unknown"; break;
-                    }
-                    std::cout << ")" << std::endl;
-                }
-            }
         }
         catch (const std::exception& e) {
-            std::cout << "Erase failed with exception: " << e.what() << std::endl;
+            std::cerr << "[" << config.controllerId << "] Erase memory failed: " << e.what() << std::endl;
+            return false;
         }
-        return false;
     }
 
     uint16_t RC40FlasherDevice::requestDownload(uint32_t address, uint32_t size) {
