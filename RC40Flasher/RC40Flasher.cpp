@@ -132,7 +132,7 @@ namespace RC40Flasher {
                         }
                     }
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                //std::this_thread::sleep_for(std::chrono::milliseconds(1)); // don't delay, make it go BRRRRRT
             }
 
             if (!gotFlowControl) {
@@ -169,7 +169,7 @@ namespace RC40Flasher {
                 sequenceNumber = (sequenceNumber + 1) & 0x0F;
 
                 // Small delay between consecutive frames
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                //std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
 
             std::cout << "[" << config.controllerId << "] Multi-frame transmission complete" << std::endl;
@@ -504,6 +504,125 @@ namespace RC40Flasher {
             catch (const std::exception& e) {
                 std::cerr << "[" << config.controllerId << "] Transfer data error: "
                     << e.what() << std::endl;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Add this to your RC40FlasherDevice class
+    struct DataRegion {
+        uint32_t address;
+        std::vector<uint8_t> data;
+    };
+
+    std::vector<DataRegion> findDataRegions(const std::vector<uint8_t>& firmwareData, uint32_t baseAddress) {
+        std::vector<DataRegion> regions;
+
+        const size_t minRegionSize = 256; // Minimum bytes to justify separate transfer
+        const size_t maxPaddingGap = 1024; // Skip gaps larger than this
+
+        size_t regionStart = 0;
+        bool inDataRegion = false;
+
+        for (size_t i = 0; i < firmwareData.size(); ++i) {
+            bool isData = (firmwareData[i] != 0xFF); // Assume 0xFF is padding
+
+            if (isData && !inDataRegion) {
+                // Start of new data region
+                regionStart = i;
+                inDataRegion = true;
+            }
+            else if (!isData && inDataRegion) {
+                // End of data region - check if we should close it
+                size_t paddingCount = 0;
+                size_t j = i;
+
+                // Count consecutive padding bytes
+                while (j < firmwareData.size() && firmwareData[j] == 0xFF && paddingCount < maxPaddingGap) {
+                    paddingCount++;
+                    j++;
+                }
+
+                if (paddingCount >= maxPaddingGap || j >= firmwareData.size()) {
+                    // Large gap or end of data - close current region
+                    size_t regionSize = i - regionStart;
+
+                    if (regionSize >= minRegionSize) {
+                        DataRegion region;
+                        region.address = baseAddress + regionStart;
+                        region.data = std::vector<uint8_t>(
+                            firmwareData.begin() + regionStart,
+                            firmwareData.begin() + i
+                        );
+                        regions.push_back(region);
+
+                        std::cout << "Data region: 0x" << std::hex << region.address
+                            << " size: " << std::dec << region.data.size() << " bytes" << std::endl;
+                    }
+
+                    inDataRegion = false;
+                    i = j - 1; // Skip the padding gap
+                }
+            }
+        }
+
+        // Handle final region
+        if (inDataRegion) {
+            size_t regionSize = firmwareData.size() - regionStart;
+            if (regionSize >= minRegionSize) {
+                DataRegion region;
+                region.address = baseAddress + regionStart;
+                region.data = std::vector<uint8_t>(
+                    firmwareData.begin() + regionStart,
+                    firmwareData.end()
+                );
+                regions.push_back(region);
+
+                std::cout << "Final region: 0x" << std::hex << region.address
+                    << " size: " << std::dec << region.data.size() << " bytes" << std::endl;
+            }
+        }
+
+        return regions;
+    }
+
+    bool RC40FlasherDevice::transferDataSparse(uint8_t areaId, const std::vector<uint8_t>& firmwareData, uint32_t baseAddress) {
+        // Find actual data regions (skip large padding areas)
+        auto regions = findDataRegions(firmwareData, baseAddress);
+
+        std::cout << "Found " << regions.size() << " data regions to transfer" << std::endl;
+
+        size_t totalBytes = 0;
+        for (const auto& region : regions) {
+            totalBytes += region.data.size();
+        }
+
+        std::cout << "Transferring " << totalBytes << " bytes (skipping "
+            << (firmwareData.size() - totalBytes) << " padding bytes)" << std::endl;
+
+        // Transfer each region separately
+        for (const auto& region : regions) {
+            std::cout << "Transferring region at 0x" << std::hex << region.address
+                << " (" << std::dec << region.data.size() << " bytes)" << std::endl;
+
+            // Request download for this specific region
+            uint16_t maxBlockSize = requestDownload(region.address, region.data.size());
+            if (maxBlockSize == 0) {
+                std::cout << "Request download failed for region 0x" << std::hex << region.address << std::endl;
+                return false;
+            }
+
+            // Transfer the region data
+            if (!transferData(region.data, maxBlockSize)) {
+                std::cout << "Transfer failed for region 0x" << std::hex << region.address << std::endl;
+                return false;
+            }
+
+            // Transfer exit for this region
+            if (!requestTransferExit()) {
+                std::cout << "Transfer exit failed for region 0x" << std::hex << region.address << std::endl;
                 return false;
             }
         }

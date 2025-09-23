@@ -422,22 +422,28 @@ void flashASW0AndDS0Split() {
             return;
         }
 
-        std::cout << "Request download ASW0..." << std::endl;
-        uint16_t maxBlockSize = flasher.requestDownload(asw0Start, (uint32_t)asw0Data.size());
-        if (maxBlockSize == 0) {
-            std::cout << "ASW0 request download failed" << std::endl;
-            return;
-        }
+        //std::cout << "Request download ASW0..." << std::endl;
+        //uint16_t maxBlockSize = flasher.requestDownload(asw0Start, (uint32_t)asw0Data.size());
+        //if (maxBlockSize == 0) {
+        //    std::cout << "ASW0 request download failed" << std::endl;
+        //    return;
+        //}
 
-        std::cout << "Transferring ASW0 data..." << std::endl;
-        if (!flasher.transferData(asw0Data, maxBlockSize)) {
+        //std::cout << "Transferring ASW0 data..." << std::endl;
+        //if (!flasher.transferData(asw0Data, maxBlockSize)) {
+        //    std::cout << "ASW0 transfer failed" << std::endl;
+        //    return;
+        //}
+
+        //std::cout << "ASW0 transfer exit..." << std::endl;
+        //if (!flasher.requestTransferExit()) {
+        //    std::cout << "ASW0 transfer exit failed" << std::endl;
+        //    return;
+        //}
+
+        std::cout << "Transferring ASW0 data (sparse)..." << std::endl;
+        if (!flasher.transferDataSparse(0x01, asw0Data, asw0Start)) {
             std::cout << "ASW0 transfer failed" << std::endl;
-            return;
-        }
-
-        std::cout << "ASW0 transfer exit..." << std::endl;
-        if (!flasher.requestTransferExit()) {
-            std::cout << "ASW0 transfer exit failed" << std::endl;
             return;
         }
 
@@ -459,22 +465,28 @@ void flashASW0AndDS0Split() {
                 return;
             }
 
-            std::cout << "Request download DS0..." << std::endl;
-            maxBlockSize = flasher.requestDownload(ds0Start, (uint32_t)ds0Data.size());
-            if (maxBlockSize == 0) {
-                std::cout << "DS0 request download failed" << std::endl;
-                return;
-            }
+            //std::cout << "Request download DS0..." << std::endl;
+            //maxBlockSize = flasher.requestDownload(ds0Start, (uint32_t)ds0Data.size());
+            //if (maxBlockSize == 0) {
+            //    std::cout << "DS0 request download failed" << std::endl;
+            //    return;
+            //}
 
-            std::cout << "Transferring DS0 data..." << std::endl;
-            if (!flasher.transferData(ds0Data, maxBlockSize)) {
+            //std::cout << "Transferring DS0 data..." << std::endl;
+            //if (!flasher.transferData(ds0Data, maxBlockSize)) {
+            //    std::cout << "DS0 transfer failed" << std::endl;
+            //    return;
+            //}
+
+            //std::cout << "DS0 transfer exit..." << std::endl;
+            //if (!flasher.requestTransferExit()) {
+            //    std::cout << "DS0 transfer exit failed" << std::endl;
+            //    return;
+            //}
+
+            std::cout << "Transferring DS0 data (sparse)..." << std::endl;
+            if (!flasher.transferDataSparse(0x02, ds0Data, ds0Start)) {
                 std::cout << "DS0 transfer failed" << std::endl;
-                return;
-            }
-
-            std::cout << "DS0 transfer exit..." << std::endl;
-            if (!flasher.requestTransferExit()) {
-                std::cout << "DS0 transfer exit failed" << std::endl;
                 return;
             }
 

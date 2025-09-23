@@ -75,6 +75,7 @@ namespace RC40Flasher {
         bool requestTransferExit();
         bool checkMemory(uint8_t areaId);
         bool ecuReset();
+        bool transferDataSparse(uint8_t areaId, const std::vector<uint8_t>& firmwareData, uint32_t baseAddress);
     };
 
     class MultiControllerFlasher {
