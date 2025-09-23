@@ -324,6 +324,19 @@ void flashASW0AndDS0Split() {
     RC40Flasher::RC40FlasherDevice flasher(testConfig);
     if (!flasher.initialize()) return;
 
+    // Load and split firmware data
+    std::string hexFile = "firmware/rc5_6_40_asw0.hex";
+    std::vector<uint8_t> firmwareData;
+
+    try {
+        firmwareData = parseIntelHexFile(hexFile);
+        std::cout << "Total firmware loaded: " << firmwareData.size() << " bytes" << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cout << "Cannot load firmware file: " << e.what() << std::endl;
+        return;
+    }
+
     try {
         // Send tester present first (like official tool)
         std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
@@ -361,19 +374,6 @@ void flashASW0AndDS0Split() {
         }
         else {
             std::cout << "Fingerprint date: FAILED" << std::endl;
-            return;
-        }
-
-        // Load and split firmware data
-        std::string hexFile = "firmware/rc5_6_40_asw0.hex";
-        std::vector<uint8_t> firmwareData;
-
-        try {
-            firmwareData = parseIntelHexFile(hexFile);
-            std::cout << "Total firmware loaded: " << firmwareData.size() << " bytes" << std::endl;
-        }
-        catch (const std::exception& e) {
-            std::cout << "Cannot load firmware file: " << e.what() << std::endl;
             return;
         }
 
