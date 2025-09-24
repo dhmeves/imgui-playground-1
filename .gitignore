@@ -35,6 +35,7 @@ bld/
 # Custom not ignored files
 !pcan/lib/x64/
 !pcan/lib/x86/
+!openssl/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
