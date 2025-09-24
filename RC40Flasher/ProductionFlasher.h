@@ -24,9 +24,10 @@ namespace RC40Flasher {
             std::string password;
             uint32_t requestId;
             uint32_t responseId;
+            //std::vector<uint8_t> firmwareData;
         };
 
-        bool flashSingleECU(const FlashJob& job);
+        bool flashSingleECU(const FlashJob& job, const std::vector<uint8_t>& firmwareData);
         std::map<std::string, bool> flashMultipleECUs(const std::vector<FlashJob>& jobs);
     };
 

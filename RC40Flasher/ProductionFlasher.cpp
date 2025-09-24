@@ -11,7 +11,7 @@ namespace RC40Flasher {
         std::cout << message << std::endl;
     }
 
-    bool MultiChannelFlasher::flashSingleECU(const FlashJob& job) {
+    bool MultiChannelFlasher::flashSingleECU(const FlashJob& job, const std::vector<uint8_t>& firmwareData) {
         // Add startup delay based on channel number to stagger initialization
         int channelDelay = (job.canChannel - PCAN_USBBUS1) * 1000; // 1 second per channel
         if (channelDelay > 0) {
@@ -33,15 +33,15 @@ namespace RC40Flasher {
         }
 
         // Load firmware data first (before any CAN operations)
-        std::vector<uint8_t> firmwareData;
-        try {
-            firmwareData = flasher.parseIntelHexFile(job.hexFilePath);
-            threadSafeLog("[" + job.controllerId + "] Loaded " + std::to_string(firmwareData.size()) + " bytes");
-        }
-        catch (const std::exception& e) {
-            threadSafeLog("[" + job.controllerId + "] HEX file error: " + std::string(e.what()));
-            return false;
-        }
+        //std::vector<uint8_t> firmwareData;
+        //try {
+        //    firmwareData = flasher.parseIntelHexFile(job.hexFilePath);
+        //    threadSafeLog("[" + job.controllerId + "] Loaded " + std::to_string(firmwareData.size()) + " bytes");
+        //}
+        //catch (const std::exception& e) {
+        //    threadSafeLog("[" + job.controllerId + "] HEX file error: " + std::string(e.what()));
+        //    return false;
+        //}
 
         try {
             // Tester present
@@ -146,16 +146,27 @@ namespace RC40Flasher {
     }
 
     std::map<std::string, bool> MultiChannelFlasher::flashMultipleECUs(const std::vector<FlashJob>& jobs) {
-        std::vector<std::future<std::pair<std::string, bool>>> futures;
+        if (jobs.empty()) return {};
 
+        // Parse HEX file once
+        threadSafeLog("Loading firmware file: " + jobs[0].hexFilePath);
+        std::vector<uint8_t> firmwareData;
+        try {
+            firmwareData = parseIntelHexFile(jobs[0].hexFilePath);
+            threadSafeLog("Loaded " + std::to_string(firmwareData.size()) + " bytes for all ECUs");
+        }
+        catch (const std::exception& e) {
+            threadSafeLog("HEX file error: " + std::string(e.what()));
+            return {};
+        }
+
+        std::vector<std::future<std::pair<std::string, bool>>> futures;
         threadSafeLog("Starting simultaneous flash of " + std::to_string(jobs.size()) + " ECUs...");
 
-        // Launch threads for each ECU
+        // Launch threads with shared firmware data
         for (const auto& job : jobs) {
-            auto future = std::async(std::launch::async, [this, job]() {
-                bool result = flashSingleECU(job);
-                // In ProductionFlasher.cpp, in flashMultipleECUs function, after the thread launch:
-                threadSafeLog("Launched thread for " + job.controllerId + " on channel " + std::to_string(job.canChannel));
+            auto future = std::async(std::launch::async, [this, job, firmwareData]() {
+                bool result = flashSingleECU(job, firmwareData);
                 return std::make_pair(job.controllerId, result);
                 });
             futures.push_back(std::move(future));
@@ -319,6 +330,18 @@ namespace RC40Flasher {
             stations.emplace_back(i + 1, channels[i]);
         }
 
+        // Parse HEX file once
+        threadSafeLog("Loading firmware file: " + hexFilePath);
+        std::vector<uint8_t> firmwareData;
+        try {
+            firmwareData = parseIntelHexFile(hexFilePath);
+            threadSafeLog("Loaded " + std::to_string(firmwareData.size()) + " bytes for all ECUs");
+        }
+        catch (const std::exception& e) {
+            threadSafeLog("HEX file error: " + std::string(e.what()));
+            return;
+        }
+
         threadSafeLog("Production line started with " + std::to_string(stations.size()) + " stations");
         threadSafeLog("Insert ECUs to begin flashing...");
 
@@ -337,7 +360,7 @@ namespace RC40Flasher {
                         station.lastStateChange = std::chrono::steady_clock::now();
 
                         // Launch flash in separate thread
-                        std::thread flashThread([this, &station, hexFilePath, password]() {
+                        std::thread flashThread([this, &station, hexFilePath, password, firmwareData]() {
                             FlashJob job;
                             job.controllerId = station.controllerId;
                             job.canChannel = station.canChannel;
@@ -346,9 +369,9 @@ namespace RC40Flasher {
                             job.requestId = 0x18DA01FA;
                             job.responseId = 0x18DAFA01;
 
-                            threadSafeLog("[Station " + std::to_string(station.stationId) + "] Starting flash...");
 
-                            bool result = flashSingleECU(job);
+                            threadSafeLog("[Station " + std::to_string(station.stationId) + "] Starting flash...");
+                            bool result = flashSingleECU(job, firmwareData);
 
                             station.flashAttempts++;
                             station.state = result ? FLASH_SUCCESS : FLASH_FAILED;

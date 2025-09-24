@@ -22,7 +22,7 @@ namespace RC40Flasher {
     }
 
     // Add this HEX file parser function
-    std::vector<uint8_t> RC40FlasherDevice::parseIntelHexFile(const std::string& filename) {
+    std::vector<uint8_t> parseIntelHexFile(const std::string& filename) {
         std::ifstream file(filename);
         if (!file.is_open()) {
             throw std::runtime_error("Cannot open HEX file: " + filename);

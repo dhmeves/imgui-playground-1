@@ -56,7 +56,6 @@ namespace RC40Flasher {
         RC40FlasherDevice(const ControllerConfig& cfg);
         ~RC40FlasherDevice();
 
-        std::vector<uint8_t> parseIntelHexFile(const std::string& filename);
         bool initialize();
         void cleanup();
         bool flashController(const std::map<std::string, std::string>& firmwareFiles,
@@ -92,5 +91,6 @@ namespace RC40Flasher {
         const std::vector<std::string>& controllerIds);
 
     bool pingECU(TPCANHandle channel);
+    std::vector<uint8_t> parseIntelHexFile(const std::string& filename);
 
 } // namespace RC40Flasher

@@ -342,7 +342,7 @@ void flashASW0AndDS0Split() {
     std::vector<uint8_t> firmwareData;
 
     try {
-        firmwareData = flasher.parseIntelHexFile(hexFile);
+        firmwareData = RC40Flasher::parseIntelHexFile(hexFile);
         std::cout << "Total firmware loaded: " << firmwareData.size() << " bytes" << std::endl;
     }
     catch (const std::exception& e) {
@@ -595,7 +595,7 @@ void testOfficialToolSequence() {
         std::vector<uint8_t> firmwareData;
 
         try {
-            firmwareData = flasher.parseIntelHexFile(hexFile);
+            firmwareData = RC40Flasher::parseIntelHexFile(hexFile);
             std::cout << "Loaded ASW0 firmware: " << firmwareData.size() << " bytes" << std::endl;
         }
         catch (const std::exception& e) {
@@ -1156,7 +1156,7 @@ void flashASW0WithProperSequence() {
         std::vector<uint8_t> firmwareData;
 
         try {
-            firmwareData = flasher.parseIntelHexFile(hexFile);
+            firmwareData = RC40Flasher::parseIntelHexFile(hexFile);
             std::cout << "Loaded ASW0 firmware: " << firmwareData.size() << " bytes" << std::endl;
         }
         catch (const std::exception& e) {
@@ -1241,7 +1241,7 @@ void testCBFirstApproach() {
         if (cbFile.is_open()) {
             cbFile.close();
 
-            auto cbData = flasher.parseIntelHexFile(cbHexFile);
+            auto cbData = RC40Flasher::parseIntelHexFile(cbHexFile);
             std::cout << "CB firmware loaded: " << cbData.size() << " bytes" << std::endl;
 
             // Flash CB
@@ -1547,7 +1547,7 @@ void testRC40ASW0AndDS0HexFlashing() {
 
         std::cout << "=== LOADING HEX FILE ===" << std::endl;
         std::string hexFile = "firmware/rc5_6_40_asw0.hex";
-        auto firmwareData = flasher.parseIntelHexFile(hexFile);
+        auto firmwareData = RC40Flasher::parseIntelHexFile(hexFile);
 
         std::cout << "Total firmware size: " << firmwareData.size() << " bytes" << std::endl;
 
@@ -1665,9 +1665,9 @@ void testRC40ASW0HexFlashing() {
         // Parse Intel HEX file
         std::string hexFile = "firmware/rc5_6_40_asw0.hex";
         std::vector<uint8_t> firmwareData;
-
+        
         try {
-            firmwareData = flasher.parseIntelHexFile(hexFile);
+            firmwareData = RC40Flasher::parseIntelHexFile(hexFile);
         }
         catch (const std::exception& e) {
             std::cout << "ERROR: Failed to parse HEX file: " << e.what() << std::endl;
