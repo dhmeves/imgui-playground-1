@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <algorithm>
 
+
 namespace RC40Flasher {
 
     // Constructor implementations
@@ -20,6 +21,98 @@ namespace RC40Flasher {
         cleanup();
     }
 
+    // Add this HEX file parser function
+    std::vector<uint8_t> RC40FlasherDevice::parseIntelHexFile(const std::string& filename) {
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            throw std::runtime_error("Cannot open HEX file: " + filename);
+        }
+
+        std::map<uint32_t, uint8_t> addressData; // Address -> Data mapping
+        uint32_t extendedAddress = 0;
+        uint32_t minAddress = UINT32_MAX;
+        uint32_t maxAddress = 0;
+
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.empty() || line[0] != ':') continue;
+
+            if (line.length() < 11) {
+                throw std::runtime_error("Invalid HEX line: " + line);
+            }
+
+            // Parse HEX line: :LLAAAATT[DD...]CC
+            uint8_t byteCount = std::stoi(line.substr(1, 2), nullptr, 16);
+            uint16_t address = std::stoi(line.substr(3, 4), nullptr, 16);
+            uint8_t recordType = std::stoi(line.substr(7, 2), nullptr, 16);
+
+            uint32_t fullAddress = extendedAddress + address;
+
+
+            switch (recordType) {
+            case 0x00: // Data record
+                for (int i = 0; i < byteCount; ++i) {
+                    uint8_t data = std::stoi(line.substr(9 + i * 2, 2), nullptr, 16);
+                    addressData[fullAddress + i] = data;
+                    minAddress = (std::min)(minAddress, fullAddress + i);
+                    maxAddress = (std::max)(maxAddress, fullAddress + i);
+                }
+                break;
+
+            case 0x01: // End of file
+                break;
+
+            case 0x02: // Extended Segment Address
+                if (byteCount == 2) {
+                    extendedAddress = std::stoi(line.substr(9, 4), nullptr, 16) << 4;
+                }
+                break;
+
+            case 0x04: // Extended Linear Address
+                if (byteCount == 2) {
+                    extendedAddress = std::stoi(line.substr(9, 4), nullptr, 16) << 16;
+                }
+                break;
+
+            default:
+                std::cout << "Warning: Unsupported record type 0x" << std::hex << (int)recordType << std::dec << std::endl;
+                break;
+            }
+        }
+
+        if (addressData.empty()) {
+            throw std::runtime_error("No data found in HEX file");
+        }
+
+        // Convert to contiguous binary data
+        std::vector<uint8_t> binaryData;
+        std::cout << "HEX file parsed: Address range 0x" << std::hex << minAddress
+            << " to 0x" << maxAddress << std::dec << std::endl;
+        std::cout << "Total data size: " << (maxAddress - minAddress + 1) << " bytes" << std::endl;
+
+        // Fill gaps with 0xFF (common for flash memory)
+        for (uint32_t addr = minAddress; addr <= maxAddress; ++addr) {
+            auto it = addressData.find(addr);
+            if (it != addressData.end()) {
+                binaryData.push_back(it->second);
+            }
+            else {
+                binaryData.push_back(0xFF); // Fill gaps
+            }
+        }
+
+        std::cout << "Address analysis:" << std::endl;
+        std::cout << "ASW0 range: 0x09020000 - 0x093BFFFF" << std::endl;
+        std::cout << "DS0 range:  0x093C0000 - 0x094BFFFF" << std::endl;
+        std::cout << "File range: 0x" << std::hex << minAddress << " - 0x" << maxAddress << std::dec << std::endl;
+
+        if (maxAddress > 0x093BFFFF) {
+            std::cout << "WARNING: HEX file contains DS0 data!" << std::endl;
+        }
+
+        return binaryData;
+    }
+
     bool RC40FlasherDevice::initialize() {
         TPCANStatus result = CAN_Initialize(config.canChannel, PCAN_BAUD_250K, 0, 0, 0);
         if (result == PCAN_ERROR_OK) {
@@ -32,6 +125,41 @@ namespace RC40Flasher {
                 << std::hex << result << std::dec << std::endl;
             return false;
         }
+    }
+
+    bool pingECU(TPCANHandle channel) {
+        TPCANStatus result = CAN_Initialize(channel, PCAN_BAUD_250K, 0, 0, 0);
+        if (result != PCAN_ERROR_OK && result != PCAN_ERROR_CAUTION) {
+            return false;
+        }
+
+        // Send tester present
+        TPCANMsg msg;
+        msg.ID = 0x18DA01FA;
+        msg.LEN = 8;
+        msg.MSGTYPE = PCAN_MESSAGE_EXTENDED;
+        msg.DATA[0] = 0x02;  // Length
+        msg.DATA[1] = 0x3E;  // Tester Present
+        msg.DATA[2] = 0x00;  // Sub-function
+        for (int i = 3; i < 8; i++) msg.DATA[i] = 0x55;
+
+        bool responsive = false;
+        if (CAN_Write(channel, &msg) == PCAN_ERROR_OK) {
+            // Wait for response
+            for (int attempts = 0; attempts < 100; attempts++) {
+                TPCANMsg responseMsg;
+                TPCANTimestamp timestamp;
+                if (CAN_Read(channel, &responseMsg, &timestamp) == PCAN_ERROR_OK &&
+                    responseMsg.ID == 0x18DAFA01) {
+                    responsive = true;
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+
+        CAN_Uninitialize(channel);
+        return responsive;
     }
 
     void RC40FlasherDevice::cleanup() {

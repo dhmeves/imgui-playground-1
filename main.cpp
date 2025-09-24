@@ -23,6 +23,7 @@
 #include "joystickHandling.h"
 
 #include "RC40Flasher.h"
+#include "ProductionFlasher.h"
 #include <iostream>
 
 //	ADD "OPEN/SAVE" NATIVE-WINDOWS DIALOG POPUPS
@@ -208,97 +209,7 @@ void update_motion(MotionProfile* profile) {
  //}
 
 
-// Add this HEX file parser function
-std::vector<uint8_t> parseIntelHexFile(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        throw std::runtime_error("Cannot open HEX file: " + filename);
-    }
 
-    std::map<uint32_t, uint8_t> addressData; // Address -> Data mapping
-    uint32_t extendedAddress = 0;
-    uint32_t minAddress = UINT32_MAX;
-    uint32_t maxAddress = 0;
-
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] != ':') continue;
-
-        if (line.length() < 11) {
-            throw std::runtime_error("Invalid HEX line: " + line);
-        }
-
-        // Parse HEX line: :LLAAAATT[DD...]CC
-        uint8_t byteCount = std::stoi(line.substr(1, 2), nullptr, 16);
-        uint16_t address = std::stoi(line.substr(3, 4), nullptr, 16);
-        uint8_t recordType = std::stoi(line.substr(7, 2), nullptr, 16);
-
-        uint32_t fullAddress = extendedAddress + address;
-
-
-        switch (recordType) {
-        case 0x00: // Data record
-            for (int i = 0; i < byteCount; ++i) {
-                uint8_t data = std::stoi(line.substr(9 + i * 2, 2), nullptr, 16);
-                addressData[fullAddress + i] = data;
-                minAddress = (std::min)(minAddress, fullAddress + i);
-                maxAddress = (std::max)(maxAddress, fullAddress + i);
-            }
-            break;
-
-        case 0x01: // End of file
-            break;
-
-        case 0x02: // Extended Segment Address
-            if (byteCount == 2) {
-                extendedAddress = std::stoi(line.substr(9, 4), nullptr, 16) << 4;
-            }
-            break;
-
-        case 0x04: // Extended Linear Address
-            if (byteCount == 2) {
-                extendedAddress = std::stoi(line.substr(9, 4), nullptr, 16) << 16;
-            }
-            break;
-
-        default:
-            std::cout << "Warning: Unsupported record type 0x" << std::hex << (int)recordType << std::dec << std::endl;
-            break;
-        }
-    }
-
-    if (addressData.empty()) {
-        throw std::runtime_error("No data found in HEX file");
-    }
-
-    // Convert to contiguous binary data
-    std::vector<uint8_t> binaryData;
-    std::cout << "HEX file parsed: Address range 0x" << std::hex << minAddress
-        << " to 0x" << maxAddress << std::dec << std::endl;
-    std::cout << "Total data size: " << (maxAddress - minAddress + 1) << " bytes" << std::endl;
-
-    // Fill gaps with 0xFF (common for flash memory)
-    for (uint32_t addr = minAddress; addr <= maxAddress; ++addr) {
-        auto it = addressData.find(addr);
-        if (it != addressData.end()) {
-            binaryData.push_back(it->second);
-        }
-        else {
-            binaryData.push_back(0xFF); // Fill gaps
-        }
-    }
-
-    std::cout << "Address analysis:" << std::endl;
-    std::cout << "ASW0 range: 0x09020000 - 0x093BFFFF" << std::endl;
-    std::cout << "DS0 range:  0x093C0000 - 0x094BFFFF" << std::endl;
-    std::cout << "File range: 0x" << std::hex << minAddress << " - 0x" << maxAddress << std::dec << std::endl;
-
-    if (maxAddress > 0x093BFFFF) {
-        std::cout << "WARNING: HEX file contains DS0 data!" << std::endl;
-    }
-
-    return binaryData;
-}
 
 void resetPCANChannel() {
     std::cout << "Resetting PCAN channel..." << std::endl;
@@ -310,6 +221,108 @@ void resetPCANChannel() {
 
     // Brief delay for driver reset
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+}
+
+void detectAvailablePCANChannels() {
+    std::cout << "=== Detecting Available PCAN Channels ===" << std::endl;
+
+    // PCAN-USB X6 channels (typically PCAN_USBBUS16 to PCAN_USBBUS21)
+    std::vector<std::pair<TPCANHandle, std::string>> channels = {
+        {PCAN_USBBUS1, "PCAN_USBBUS1"},
+        {PCAN_USBBUS2, "PCAN_USBBUS2"},
+        {PCAN_USBBUS3, "PCAN_USBBUS3"},
+        {PCAN_USBBUS4, "PCAN_USBBUS4"},
+        {PCAN_USBBUS5, "PCAN_USBBUS5"},
+        {PCAN_USBBUS6, "PCAN_USBBUS6"},
+        {PCAN_USBBUS7, "PCAN_USBBUS7"},
+        {PCAN_USBBUS8, "PCAN_USBBUS8"},
+        {PCAN_USBBUS9, "PCAN_USBBUS9"},
+        {PCAN_USBBUS10, "PCAN_USBBUS10"},
+        {PCAN_USBBUS11, "PCAN_USBBUS11"},
+        {PCAN_USBBUS12, "PCAN_USBBUS12"},
+        {PCAN_USBBUS13, "PCAN_USBBUS13"},
+        {PCAN_USBBUS14, "PCAN_USBBUS14"},
+        {PCAN_USBBUS15, "PCAN_USBBUS15"},
+        {PCAN_USBBUS16, "PCAN_USBBUS16"}
+    };
+
+    std::vector<TPCANHandle> availableChannels;
+
+    for (const auto& channel : channels) {
+        TPCANStatus result = CAN_Initialize(channel.first, PCAN_BAUD_250K, 0, 0, 0);
+
+        if (result == PCAN_ERROR_OK) {
+            std::cout << channel.second << ": AVAILABLE" << std::endl;
+            availableChannels.push_back(channel.first);
+            CAN_Uninitialize(channel.first);  // Clean up
+        }
+        else if (result == PCAN_ERROR_CAUTION) {
+            std::cout << channel.second << ": AVAILABLE (with warnings)" << std::endl;
+            availableChannels.push_back(channel.first);
+            CAN_Uninitialize(channel.first);
+        }
+        else {
+            std::cout << channel.second << ": NOT AVAILABLE (Error: 0x"
+                << std::hex << result << std::dec << ")" << std::endl;
+        }
+    }
+
+    std::cout << "\n=== Summary ===" << std::endl;
+    std::cout << "Found " << availableChannels.size() << " available channels:" << std::endl;
+
+    for (size_t i = 0; i < availableChannels.size(); ++i) {
+        std::cout << "Channel " << (i + 1) << ": ";
+        for (const auto& channel : channels) {
+            if (channel.first == availableChannels[i]) {
+                std::cout << channel.second << std::endl;
+                break;
+            }
+        }
+    }
+
+    if (availableChannels.size() >= 6) {
+        std::cout << "\nRecommended channels for 6 ECUs:" << std::endl;
+        for (int i = 0; i < 6; ++i) {
+            for (const auto& channel : channels) {
+                if (channel.first == availableChannels[i]) {
+                    std::cout << "ECU " << (i + 1) << ": " << channel.second << std::endl;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void testPCANX6Configuration() {
+    std::cout << "Testing PCAN X6 multi-channel configuration..." << std::endl;
+
+    // Test channels typically used by PCAN-USB X6
+    std::vector<TPCANHandle> testChannels = {
+        PCAN_USBBUS1, PCAN_USBBUS2, PCAN_USBBUS3,
+        PCAN_USBBUS4, PCAN_USBBUS5, PCAN_USBBUS6
+    };
+
+    std::vector<TPCANHandle> workingChannels;
+
+    for (size_t i = 0; i < testChannels.size(); ++i) {
+        TPCANStatus result = CAN_Initialize(testChannels[i], PCAN_BAUD_250K, 0, 0, 0);
+        if (result == PCAN_ERROR_OK || result == PCAN_ERROR_CAUTION) {
+            workingChannels.push_back(testChannels[i]);
+            std::cout << "PCAN_USBBUS" << (16 + i) << ": OK" << std::endl;
+            CAN_Uninitialize(testChannels[i]);
+        }
+        else {
+            std::cout << "PCAN_USBBUS" << (16 + i) << ": Failed (0x"
+                << std::hex << result << std::dec << ")" << std::endl;
+        }
+    }
+
+    std::cout << "Working channels: " << workingChannels.size() << "/6" << std::endl;
+
+    if (workingChannels.size() < 6) {
+        std::cout << "Note: PCAN-USB X6 channels may start at different numbers." << std::endl;
+        std::cout << "Run detectAvailablePCANChannels() to find actual channel numbers." << std::endl;
+    }
 }
 
 void flashASW0AndDS0Split() {
@@ -329,7 +342,7 @@ void flashASW0AndDS0Split() {
     std::vector<uint8_t> firmwareData;
 
     try {
-        firmwareData = parseIntelHexFile(hexFile);
+        firmwareData = flasher.parseIntelHexFile(hexFile);
         std::cout << "Total firmware loaded: " << firmwareData.size() << " bytes" << std::endl;
     }
     catch (const std::exception& e) {
@@ -582,7 +595,7 @@ void testOfficialToolSequence() {
         std::vector<uint8_t> firmwareData;
 
         try {
-            firmwareData = parseIntelHexFile(hexFile);
+            firmwareData = flasher.parseIntelHexFile(hexFile);
             std::cout << "Loaded ASW0 firmware: " << firmwareData.size() << " bytes" << std::endl;
         }
         catch (const std::exception& e) {
@@ -1143,7 +1156,7 @@ void flashASW0WithProperSequence() {
         std::vector<uint8_t> firmwareData;
 
         try {
-            firmwareData = parseIntelHexFile(hexFile);
+            firmwareData = flasher.parseIntelHexFile(hexFile);
             std::cout << "Loaded ASW0 firmware: " << firmwareData.size() << " bytes" << std::endl;
         }
         catch (const std::exception& e) {
@@ -1228,7 +1241,7 @@ void testCBFirstApproach() {
         if (cbFile.is_open()) {
             cbFile.close();
 
-            auto cbData = parseIntelHexFile(cbHexFile);
+            auto cbData = flasher.parseIntelHexFile(cbHexFile);
             std::cout << "CB firmware loaded: " << cbData.size() << " bytes" << std::endl;
 
             // Flash CB
@@ -1534,7 +1547,7 @@ void testRC40ASW0AndDS0HexFlashing() {
 
         std::cout << "=== LOADING HEX FILE ===" << std::endl;
         std::string hexFile = "firmware/rc5_6_40_asw0.hex";
-        auto firmwareData = parseIntelHexFile(hexFile);
+        auto firmwareData = flasher.parseIntelHexFile(hexFile);
 
         std::cout << "Total firmware size: " << firmwareData.size() << " bytes" << std::endl;
 
@@ -1654,7 +1667,7 @@ void testRC40ASW0HexFlashing() {
         std::vector<uint8_t> firmwareData;
 
         try {
-            firmwareData = parseIntelHexFile(hexFile);
+            firmwareData = flasher.parseIntelHexFile(hexFile);
         }
         catch (const std::exception& e) {
             std::cout << "ERROR: Failed to parse HEX file: " << e.what() << std::endl;
@@ -5063,8 +5076,15 @@ int main(int, char**)
     //testASW0AfterECUPowerCycle();
     //findWorkingPreparationSequence();
     //testOfficialToolSequence();
-    flashASW0AndDS0Split();
+    //flashASW0AndDS0Split(); // THIS ACTUALLY FLASHES A CONTROLLER!
+    //detectAvailablePCANChannels;
+    //RC40Flasher::testChannelDetection();
+    RC40Flasher::testAutoDetectMultiFlash();
 
+    while (true)
+    {
+        ; // do nothing while we debug CAN flashing
+    }
     // Create application window
     //ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
