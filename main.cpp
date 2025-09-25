@@ -5079,6 +5079,7 @@ int main(int, char**)
     //flashASW0AndDS0Split(); // THIS ACTUALLY FLASHES A CONTROLLER!
     //detectAvailablePCANChannels;
     //RC40Flasher::testChannelDetection();
+    //RC40Flasher::testCBVersionCheck();
     RC40Flasher::testAutoDetectMultiFlash(); // THIS ACTUALLY FLASHES MULTIPLE CONTROLLERS CONCURRENTLY!
     //RC40Flasher::testProductionLineFlashing();
 

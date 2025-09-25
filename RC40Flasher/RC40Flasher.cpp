@@ -479,7 +479,7 @@ namespace RC40Flasher {
     bool RC40FlasherDevice::diagnosticSessionControl(uint8_t sessionType) {
         try {
             std::vector<uint8_t> request = { 0x10, sessionType };
-            auto response = sendUDSRequest(request, 10000);
+            auto response = sendUDSRequest(request, 2000);
 
             if (response.size() >= 2 && response[0] == 0x50) {
                 std::cout << "[" << config.controllerId << "] Entered diagnostic session 0x"

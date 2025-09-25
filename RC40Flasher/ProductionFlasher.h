@@ -74,5 +74,8 @@ namespace RC40Flasher {
     void testAutoDetectMultiFlash();
     void testChannelDetection();
     void testProductionLineFlashing();
+    std::string readCBVersion(TPCANHandle channel);
+    void checkAllCBVersions();
+    void testCBVersionCheck();
 
 } // namespace RC40Flasher

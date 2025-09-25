@@ -4,7 +4,7 @@
 #include <algorithm>
 
 namespace RC40Flasher {
-
+    static std::mutex programmingMutex;
     // MultiChannelFlasher implementation
     void MultiChannelFlasher::threadSafeLog(const std::string& message) {
         std::lock_guard<std::mutex> lock(logMutex);
@@ -12,18 +12,70 @@ namespace RC40Flasher {
     }
 
     bool MultiChannelFlasher::flashSingleECU(const FlashJob& job, const std::vector<uint8_t>& firmwareData) {
+        ControllerConfig config("RC5-6/40", job.controllerId, job.canChannel);
+        config.canIdRequest = job.requestId;
+        config.canIdResponse = job.responseId;
+
+        RC40FlasherDevice flasher(config);
+        threadSafeLog("[" + job.controllerId + "] Resetting ECU to clean state...");
+
+        try {
+            std::vector<uint8_t> resetCmd = { 0x11, 0x01 }; // Hard reset
+            flasher.sendUDSRequest(resetCmd, 2000);
+            std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // Wait for reboot
+        }
+        catch (...) {
+            // Reset may not respond, that's normal
+        }
+
+        /*
+        threadSafeLog("[" + job.controllerId + "] Flashing CB...");
+        if (!flasher.eraseMemory(0x00)) {
+            threadSafeLog("[" + job.controllerId + "] CB erase failed");
+            return false;
+        }
+
+        // You'll need CB firmware data - either:
+        // 1. Separate CB hex file, or 
+        // 2. Extract CB from combined firmware
+
+        // For now, create dummy CB data or load separate file:
+        std::string cbHexFile = "firmware/rc5_6_40_cb.hex";
+        std::vector<uint8_t> cbData;
+        try {
+            cbData = parseIntelHexFile(cbHexFile);
+        }
+        catch (...) {
+            // If no separate CB file, create minimal CB data
+            //cbData.resize(0x48000, 0xFF); // CB size for RC5-6/40
+            //threadSafeLog("[" + job.controllerId + "] Using dummy CB data");
+        }
+
+        uint32_t cbAddress = 0x08FD8000; // CB start address
+        if (!flasher.transferDataSparse(0x00, cbData, cbAddress)) {
+            threadSafeLog("[" + job.controllerId + "] CB transfer failed");
+            return false;
+        }
+
+        if (!flasher.checkMemory(0x00)) {
+            threadSafeLog("[" + job.controllerId + "] CB check failed");
+            return false;
+        }
+
+        threadSafeLog("[" + job.controllerId + "] CB flash complete, continuing with ASW0...");
+        */
+
+        // Clear any residual CAN messages
+        //flasher.cleanup();
+        //std::this_thread::sleep_for(std::chrono::milliseconds(10000)); // Wait for reboot
+        //if (!flasher.initialize()) return false;
+
         // Add startup delay based on channel number to stagger initialization
         int channelDelay = (job.canChannel - PCAN_USBBUS1) * 3000; // 1 second per channel
         if (channelDelay > 0) {
             threadSafeLog("[" + job.controllerId + "] Waiting " + std::to_string(channelDelay / 1000) + "s before start...");
             std::this_thread::sleep_for(std::chrono::milliseconds(channelDelay));
         }
-
-        ControllerConfig config("RC5-6/40", job.controllerId, job.canChannel);
-        config.canIdRequest = job.requestId;
-        config.canIdResponse = job.responseId;
-
-        RC40FlasherDevice flasher(config);
 
         threadSafeLog("[" + job.controllerId + "] Starting flash process...");
 
@@ -48,10 +100,27 @@ namespace RC40Flasher {
             std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
             flasher.sendUDSRequest(testerPresent, 1000);
 
-            // Programming mode
-            if (!flasher.diagnosticSessionControl(0x02)) {
-                threadSafeLog("[" + job.controllerId + "] Programming mode failed");
-                return false;
+            // START - RM: SEND FUNCTIONAL ADDRESSING TO TRY AND PREVENT THE "FLASHING SUCCESSFUL EVERY OTHER TIME" ISSUE
+            std::cout << "[" << config.controllerId << "] Preparation phase (functional addressing)..." << std::endl;
+
+            if (!flasher.sendFunctionalCommand({ 0x10, 0x83 })) return false;  // Extended diagnostic
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+            if (!flasher.sendFunctionalCommand({ 0x85, 0x82 })) return false;  // DTC OFF  
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+            if (!flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 })) return false;  // Comm control
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            // END - RM: SEND FUNCTIONAL ADDRESSING TO TRY AND PREVENT THE "FLASHING SUCCESSFUL EVERY OTHER TIME" ISSUE
+
+            {
+                std::lock_guard<std::mutex> lock(programmingMutex);
+                if (!flasher.diagnosticSessionControl(0x02)) {
+                    threadSafeLog("[" + job.controllerId + "] Programming mode failed");
+                    return false;
+                }
+                // Small delay to let ECU fully enter programming mode
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
             // Security access
@@ -511,6 +580,89 @@ namespace RC40Flasher {
             "firmware/rc5_6_40_asw0.hex",
             "DEF_PASSWORD_021"
         );
+    }
+
+    std::string readCBVersion(TPCANHandle channel) {
+        RC40Flasher::ControllerConfig config("RC5-6/40", "CB_VERSION_CHECK", channel);
+        config.canIdRequest = 0x18DA01FA;
+        config.canIdResponse = 0x18DAFA01;
+
+        RC40Flasher::RC40FlasherDevice flasher(config);
+
+        if (!flasher.initialize()) {
+            return "CAN_INIT_FAILED";
+        }
+
+        try {
+            // Send tester present first
+            std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
+            flasher.sendUDSRequest(testerPresent, 1000);
+
+            // Read CB version using DID 0xF180
+            std::vector<uint8_t> readCmd = { 0x22, 0xF1, 0x80 };
+            auto response = flasher.sendUDSRequest(readCmd, 2000);
+
+            if (response.size() >= 3 && response[1] == 0x62 && response[2] == 0xF1 && response[3] == 0x80) {
+                // Extract version data (skip first 3 bytes: 62 F1 80)
+                std::string version = "";
+                for (size_t i = 4; i < response.size(); ++i) {
+                    if (response[i] >= 0x20 && response[i] <= 0x7E) { // Printable ASCII
+                        version += static_cast<char>(response[i]);
+                    }
+                    else {
+                        version += "\\x" + std::to_string(response[i]);
+                    }
+                }
+                flasher.cleanup();
+                return version;
+            }
+            else {
+                flasher.cleanup();
+                return "READ_FAILED";
+            }
+
+        }
+        catch (const std::exception& e) {
+            flasher.cleanup();
+            return "EXCEPTION: " + std::string(e.what());
+        }
+    }
+
+    void checkAllCBVersions() {
+        std::cout << "=== CB Version Check for All ECUs ===" << std::endl;
+
+        RC40Flasher::AutoDetectMultiChannelFlasher detector;
+        auto channels = detector.detectChannels();
+
+        if (channels.empty()) {
+            std::cout << "No channels detected" << std::endl;
+            return;
+        }
+
+        for (size_t i = 0; i < channels.size(); ++i) {
+            std::cout << "Channel " << (channels[i] - PCAN_USBBUS1 + 1) << ": ";
+
+            // Check if ECU responds first
+            if (RC40Flasher::pingECU(channels[i])) {
+                std::string version = readCBVersion(channels[i]);
+                std::cout << "CB Version: " << version << std::endl;
+            }
+            else {
+                std::cout << "No ECU detected" << std::endl;
+            }
+        }
+
+        std::cout << "\nDone checking CB versions." << std::endl;
+    }
+
+    // Add this to the test functions section
+    void testCBVersionCheck() {
+        std::cout << "=== Testing CB Version Reading ===" << std::endl;
+        std::cout << "This will read CB version (DID 0xF180) from all connected ECUs" << std::endl;
+        std::cout << "Press Enter to start...";
+        std::cin.get();
+
+        checkAllCBVersions();
     }
 
 } // namespace RC40Flasher
