@@ -101,16 +101,16 @@ namespace RC40Flasher {
             flasher.sendUDSRequest(testerPresent, 1000);
 
             // START - RM: SEND FUNCTIONAL ADDRESSING TO TRY AND PREVENT THE "FLASHING SUCCESSFUL EVERY OTHER TIME" ISSUE
-            std::cout << "[" << config.controllerId << "] Preparation phase (functional addressing)..." << std::endl;
+            //std::cout << "[" << config.controllerId << "] Preparation phase (functional addressing)..." << std::endl;
 
-            if (!flasher.sendFunctionalCommand({ 0x10, 0x83 })) return false;  // Extended diagnostic
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            //if (!flasher.sendFunctionalCommand({ 0x10, 0x83 })) return false;  // Extended diagnostic
+            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-            if (!flasher.sendFunctionalCommand({ 0x85, 0x82 })) return false;  // DTC OFF  
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            //if (!flasher.sendFunctionalCommand({ 0x85, 0x82 })) return false;  // DTC OFF  
+            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-            if (!flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 })) return false;  // Comm control
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            //if (!flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 })) return false;  // Comm control
+            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
             // END - RM: SEND FUNCTIONAL ADDRESSING TO TRY AND PREVENT THE "FLASHING SUCCESSFUL EVERY OTHER TIME" ISSUE
 
             {

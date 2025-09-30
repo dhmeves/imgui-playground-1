@@ -477,9 +477,11 @@ namespace RC40Flasher {
     }
 
     bool RC40FlasherDevice::diagnosticSessionControl(uint8_t sessionType) {
+        std::vector<uint8_t> request = { 0x10, sessionType };
+
+        // First attempt
         try {
-            std::vector<uint8_t> request = { 0x10, sessionType };
-            auto response = sendUDSRequest(request, 2000);
+            auto response = sendUDSRequest(request, 10000);
 
             if (response.size() >= 2 && response[0] == 0x50) {
                 std::cout << "[" << config.controllerId << "] Entered diagnostic session 0x"
@@ -488,9 +490,29 @@ namespace RC40Flasher {
             }
         }
         catch (const std::exception& e) {
-            std::cerr << "[" << config.controllerId << "] Diagnostic session failed: "
-                << e.what() << std::endl;
+            std::cout << "[" << config.controllerId << "] First attempt exception: " << e.what() << std::endl;
         }
+
+        // Second attempt for programming mode only
+        if (sessionType == 0x02) {
+            std::cout << "[" << config.controllerId << "] Retrying programming mode..." << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            try {
+                auto response = sendUDSRequest(request, 10000);
+
+                if (response.size() >= 2 && response[0] == 0x50) {
+                    std::cout << "[" << config.controllerId << "] Entered diagnostic session 0x"
+                        << std::hex << (int)sessionType << std::dec << " on second attempt" << std::endl;
+                    return true;
+                }
+            }
+            catch (const std::exception& e) {
+                std::cerr << "[" << config.controllerId << "] Second attempt failed: " << e.what() << std::endl;
+            }
+        }
+
+        std::cout << "[" << config.controllerId << "] Diagnostic session failed after all attempts" << std::endl;
         return false;
     }
 
