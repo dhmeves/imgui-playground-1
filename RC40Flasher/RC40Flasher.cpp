@@ -481,7 +481,7 @@ namespace RC40Flasher {
 
         // First attempt
         try {
-            auto response = sendUDSRequest(request, 10000);
+            auto response = sendUDSRequest(request, 500);
 
             if (response.size() >= 2 && response[0] == 0x50) {
                 std::cout << "[" << config.controllerId << "] Entered diagnostic session 0x"
@@ -499,7 +499,7 @@ namespace RC40Flasher {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
             try {
-                auto response = sendUDSRequest(request, 10000);
+                auto response = sendUDSRequest(request, 500);
 
                 if (response.size() >= 2 && response[0] == 0x50) {
                     std::cout << "[" << config.controllerId << "] Entered diagnostic session 0x"
@@ -519,7 +519,7 @@ namespace RC40Flasher {
     std::vector<uint8_t> RC40FlasherDevice::securityAccessRequestSeed() {
         try {
             std::vector<uint8_t> request = { 0x27, 0x01 };
-            auto response = sendUDSRequestWithMultiFrame(request, 5000);  // Use multi-frame version
+            auto response = sendUDSRequestWithMultiFrame(request, 500);  // Use multi-frame version
 
             if (response.size() >= 18 && response[0] == 0x67 && response[1] == 0x01) {
                 std::vector<uint8_t> seed(response.begin() + 2, response.begin() + 18);
@@ -543,7 +543,7 @@ namespace RC40Flasher {
             std::vector<uint8_t> request = { 0x27, 0x02 };
             request.insert(request.end(), key.begin(), key.end());
 
-            auto response = sendUDSRequestWithMultiFrame(request, 5000);  // Use multi-frame version
+            auto response = sendUDSRequestWithMultiFrame(request, 500);  // Use multi-frame version
 
             if (response.size() >= 2 && response[0] == 0x67 && response[1] == 0x02) {
                 std::cout << "[" << config.controllerId << "] Security access unlocked successfully!" << std::endl;

@@ -65,17 +65,12 @@ namespace RC40Flasher {
         threadSafeLog("[" + job.controllerId + "] CB flash complete, continuing with ASW0...");
         */
 
-        // Clear any residual CAN messages
-        //flasher.cleanup();
-        //std::this_thread::sleep_for(std::chrono::milliseconds(10000)); // Wait for reboot
-        //if (!flasher.initialize()) return false;
-
         // Add startup delay based on channel number to stagger initialization
-        int channelDelay = (job.canChannel - PCAN_USBBUS1) * 3000; // 1 second per channel
-        if (channelDelay > 0) {
-            threadSafeLog("[" + job.controllerId + "] Waiting " + std::to_string(channelDelay / 1000) + "s before start...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(channelDelay));
-        }
+        //int channelDelay = (job.canChannel - PCAN_USBBUS1) * 3000; // 1 second per channel
+        //if (channelDelay > 0) {
+        //    threadSafeLog("[" + job.controllerId + "] Waiting " + std::to_string(channelDelay / 1000) + "s before start...");
+        //    std::this_thread::sleep_for(std::chrono::milliseconds(channelDelay));
+        //}
 
         threadSafeLog("[" + job.controllerId + "] Starting flash process...");
 
@@ -99,20 +94,6 @@ namespace RC40Flasher {
             // Tester present
             std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
             flasher.sendUDSRequest(testerPresent, 1000);
-
-            // START - RM: SEND FUNCTIONAL ADDRESSING TO TRY AND PREVENT THE "FLASHING SUCCESSFUL EVERY OTHER TIME" ISSUE
-            //std::cout << "[" << config.controllerId << "] Preparation phase (functional addressing)..." << std::endl;
-
-            //if (!flasher.sendFunctionalCommand({ 0x10, 0x83 })) return false;  // Extended diagnostic
-            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-            //if (!flasher.sendFunctionalCommand({ 0x85, 0x82 })) return false;  // DTC OFF  
-            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-            //if (!flasher.sendFunctionalCommand({ 0x28, 0x81, 0x01 })) return false;  // Comm control
-            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            // END - RM: SEND FUNCTIONAL ADDRESSING TO TRY AND PREVENT THE "FLASHING SUCCESSFUL EVERY OTHER TIME" ISSUE
-
             {
                 std::lock_guard<std::mutex> lock(programmingMutex);
                 if (!flasher.diagnosticSessionControl(0x02)) {
@@ -120,7 +101,7 @@ namespace RC40Flasher {
                     return false;
                 }
                 // Small delay to let ECU fully enter programming mode
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                //std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
             // Security access

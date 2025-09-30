@@ -5289,6 +5289,91 @@ int main(int, char**)
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
 
+            struct StationState {
+                int id;
+                std::string status;
+                float progress;
+                std::vector<std::string> logs;
+                bool isFlashing;
+                bool lastFlashSuccess;
+            };
+
+            static std::vector<StationState> stations;
+
+            StationState state;
+            state.id = 1;
+            state.status = "Idle";
+            state.progress = 0.0f;
+            state.isFlashing = false;
+            state.lastFlashSuccess = false;
+            stations.push_back(state);
+
+            {
+                ImGui::Begin("ECU Production Flasher");
+
+                ImGui::Text("Stations: %zu", 6);
+                ImGui::Separator();
+
+                // Station grid
+                for (auto& station : stations) {
+                    ImGui::PushID(station.id);
+
+                    // Station box
+                    ImVec4 boxColor = station.isFlashing ? ImVec4(1.0f, 1.0f, 0.0f, 0.3f) :
+                        station.lastFlashSuccess ? ImVec4(0.0f, 1.0f, 0.0f, 0.3f) :
+                        ImVec4(0.5f, 0.5f, 0.5f, 0.3f);
+
+                    ImGui::PushStyleColor(ImGuiCol_ChildBg, boxColor);
+                    ImGui::BeginChild("Station", ImVec2(300, 200), true);
+
+                    ImGui::Text("Station %d", station.id);
+                    ImGui::Separator();
+                    ImGui::Text("Status: %s", station.status.c_str());
+
+                    if (station.isFlashing) {
+                        ImGui::ProgressBar(station.progress, ImVec2(-1, 0));
+                    }
+
+                    ImGui::Spacing();
+                    ImGui::Text("Recent logs:");
+                    ImGui::BeginChild("Logs", ImVec2(0, 100), true);
+                    for (const auto& log : station.logs) {
+                        ImGui::TextWrapped("%s", log.c_str());
+                    }
+                    if (!station.logs.empty()) {
+                        ImGui::SetScrollHereY(1.0f);
+                    }
+                    ImGui::EndChild();
+
+                    ImGui::EndChild();
+                    ImGui::PopStyleColor();
+
+                    ImGui::PopID();
+
+                    if ((station.id % 3) != 0) ImGui::SameLine(); // 3 columns
+                }
+
+                ImGui::Separator();
+
+                // Control buttons
+                static bool isRunning = false;
+                if (!isRunning) {
+                    if (ImGui::Button("Start Production Line")) {
+                        //start();
+                        isRunning = true;
+                    }
+                }
+                else {
+                    if (ImGui::Button("Stop Production Line")) {
+                        //stop();
+                        isRunning = false;
+                    }
+                }
+
+                ImGui::End();
+            }
+
+
 
             // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
             if (show_pcan_window)

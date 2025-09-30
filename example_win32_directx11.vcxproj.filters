@@ -195,6 +195,9 @@
     <ClInclude Include="RC40Flasher\ProductionFlasher.h">
       <Filter>Header Files\RC40Flasher</Filter>
     </ClInclude>
+    <ClInclude Include="RC40Flasher\ImGuiFlasherInterface.h">
+      <Filter>Header Files\RC40Flasher</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -276,6 +279,9 @@
       <Filter>Source Files\RC40Flasher</Filter>
     </ClCompile>
     <ClCompile Include="RC40Flasher\ProductionFlasher.cpp">
+      <Filter>Source Files\RC40Flasher</Filter>
+    </ClCompile>
+    <ClCompile Include="RC40Flasher\ImGuiFlasherInterface.cpp">
       <Filter>Source Files\RC40Flasher</Filter>
     </ClCompile>
   </ItemGroup>

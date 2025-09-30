@@ -188,6 +188,7 @@
     <ClInclude Include="pcan\PCANBasic.h" />
     <ClInclude Include="pcan\stdafx.h" />
     <ClInclude Include="pcan\targetver.h" />
+    <ClInclude Include="RC40Flasher\ImGuiFlasherInterface.h" />
     <ClInclude Include="RC40Flasher\ProductionFlasher.h" />
     <ClInclude Include="RC40Flasher\RC40Flasher.h" />
     <ClInclude Include="sudoku\sudoku.h" />
@@ -217,6 +218,7 @@
     <ClCompile Include="NativeFileDialog\nfd_win.cpp" />
     <ClCompile Include="pcan\03_ManualRead.cpp" />
     <ClCompile Include="pcan\stdafx.cpp" />
+    <ClCompile Include="RC40Flasher\ImGuiFlasherInterface.cpp" />
     <ClCompile Include="RC40Flasher\ProductionFlasher.cpp" />
     <ClCompile Include="RC40Flasher\RC40Flasher.cpp" />
     <ClCompile Include="sudoku\sudoku.cpp" />
