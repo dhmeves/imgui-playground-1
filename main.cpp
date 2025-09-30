@@ -5080,13 +5080,13 @@ int main(int, char**)
     //detectAvailablePCANChannels;
     //RC40Flasher::testChannelDetection();
     //RC40Flasher::testCBVersionCheck();
-    RC40Flasher::testAutoDetectMultiFlash(); // THIS ACTUALLY FLASHES MULTIPLE CONTROLLERS CONCURRENTLY!
+    //RC40Flasher::testAutoDetectMultiFlash(); // THIS ACTUALLY FLASHES MULTIPLE CONTROLLERS CONCURRENTLY!
     //RC40Flasher::testProductionLineFlashing();
 
-    while (true)
-    {
-        ; // do nothing while we debug CAN flashing
-    }
+    //while (true)
+    //{
+    //    ; // do nothing while we debug CAN flashing
+    //}
     // Create application window
     //ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
@@ -5289,85 +5289,108 @@ int main(int, char**)
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
 
-            struct StationState {
-                int id;
-                std::string status;
-                float progress;
-                std::vector<std::string> logs;
-                bool isFlashing;
-                bool lastFlashSuccess;
-            };
+            static bool show_production_flasher = true;
+            if (show_production_flasher) {
+                ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_FirstUseEver);
+                ImGui::Begin("Production ECU Flasher", &show_production_flasher);
 
-            static std::vector<StationState> stations;
+                static RC40Flasher::ProductionFlasherGUI flasher_gui;
+                static std::string hex_path = "firmware/rc5_6_40_asw0.hex";
+                static std::string password = "DEF_PASSWORD_021";
 
-            StationState state;
-            state.id = 1;
-            state.status = "Idle";
-            state.progress = 0.0f;
-            state.isFlashing = false;
-            state.lastFlashSuccess = false;
-            stations.push_back(state);
-
-            {
-                ImGui::Begin("ECU Production Flasher");
-
-                ImGui::Text("Stations: %zu", 6);
+                ImGui::PushFont(headerTextFont);
+                ImGui::Text("Multi-ECU Production Flasher");
+                ImGui::PopFont();
                 ImGui::Separator();
 
-                // Station grid
-                for (auto& station : stations) {
-                    ImGui::PushID(station.id);
+                // Control panel
+                ImGui::BeginDisabled(flasher_gui.isFlashing());
+                if (ImGui::Button("Start Flashing", ImVec2(200, 40))) {
+                    flasher_gui.startFlashing(hex_path, password);
+                }
+                ImGui::EndDisabled();
 
-                    // Station box
-                    ImVec4 boxColor = station.isFlashing ? ImVec4(1.0f, 1.0f, 0.0f, 0.3f) :
-                        station.lastFlashSuccess ? ImVec4(0.0f, 1.0f, 0.0f, 0.3f) :
-                        ImVec4(0.5f, 0.5f, 0.5f, 0.3f);
-
-                    ImGui::PushStyleColor(ImGuiCol_ChildBg, boxColor);
-                    ImGui::BeginChild("Station", ImVec2(300, 200), true);
-
-                    ImGui::Text("Station %d", station.id);
-                    ImGui::Separator();
-                    ImGui::Text("Status: %s", station.status.c_str());
-
-                    if (station.isFlashing) {
-                        ImGui::ProgressBar(station.progress, ImVec2(-1, 0));
-                    }
-
-                    ImGui::Spacing();
-                    ImGui::Text("Recent logs:");
-                    ImGui::BeginChild("Logs", ImVec2(0, 100), true);
-                    for (const auto& log : station.logs) {
-                        ImGui::TextWrapped("%s", log.c_str());
-                    }
-                    if (!station.logs.empty()) {
-                        ImGui::SetScrollHereY(1.0f);
-                    }
-                    ImGui::EndChild();
-
-                    ImGui::EndChild();
-                    ImGui::PopStyleColor();
-
-                    ImGui::PopID();
-
-                    if ((station.id % 3) != 0) ImGui::SameLine(); // 3 columns
+                ImGui::SameLine();
+                if (flasher_gui.isFlashing()) {
+                    ImGui::Text("Flashing in progress...");
                 }
 
                 ImGui::Separator();
 
-                // Control buttons
-                static bool isRunning = false;
-                if (!isRunning) {
-                    if (ImGui::Button("Start Production Line")) {
-                        //start();
-                        isRunning = true;
+                // Check if all operations complete
+                flasher_gui.checkCompletion();
+
+                // Display progress for each ECU
+                const auto& progress_list = flasher_gui.getProgress();
+
+                if (!progress_list.empty()) {
+                    ImGui::Text("Flashing %zu ECUs:", progress_list.size());
+                    ImGui::Spacing();
+
+                    // Create columns for ECUs
+                    int columns = 3;
+                    if (ImGui::BeginTable("ecu_table", columns, ImGuiTableFlags_Borders)) {
+
+                        for (size_t i = 0; i < progress_list.size(); i++) {
+                            ImGui::TableNextColumn();
+
+                            const auto& tracker = progress_list[i];
+
+                            // ECU status box
+                            ImVec4 box_color = ImVec4(0.2f, 0.2f, 0.2f, 1.0f);
+                            if (tracker->is_complete) {
+                                box_color = tracker->is_success ?
+                                    ImVec4(0.2f, 0.6f, 0.2f, 1.0f) :  // Green
+                                    ImVec4(0.6f, 0.2f, 0.2f, 1.0f);   // Red
+                            }
+                            else if (tracker->progress > 0.0f) {
+                                box_color = ImVec4(0.6f, 0.6f, 0.2f, 1.0f); // Yellow
+                            }
+
+                            ImGui::PushStyleColor(ImGuiCol_ChildBg, box_color);
+                            ImGui::BeginChild(("ecu_" + std::to_string(i)).c_str(),
+                                ImVec2(0, 250), true);
+
+                            ImGui::Text("%s", tracker->controller_id.c_str());
+                            ImGui::Separator();
+
+                            // Progress bar
+                            ImGui::ProgressBar(tracker->progress, ImVec2(-1, 0));
+
+                            // Status
+                            if (tracker->is_complete) {
+                                ImGui::Text("Status: %s",
+                                    tracker->is_success ? "SUCCESS" : "FAILED");
+                            }
+                            else {
+                                ImGui::Text("Status: In Progress (%.0f%%)",
+                                    tracker->progress * 100.0f);
+                            }
+
+                            ImGui::Spacing();
+                            ImGui::Text("Logs:");
+                            ImGui::BeginChild(("logs_" + std::to_string(i)).c_str(),
+                                ImVec2(0, 120), true);
+
+                            auto logs = tracker->getLogs();
+                            for (const auto& log : logs) {
+                                ImGui::TextWrapped("%s", log.c_str());
+                            }
+
+                            if (!logs.empty()) {
+                                ImGui::SetScrollHereY(1.0f);
+                            }
+
+                            ImGui::EndChild();
+                            ImGui::EndChild();
+                            ImGui::PopStyleColor();
+                        }
+
+                        ImGui::EndTable();
                     }
                 }
                 else {
-                    if (ImGui::Button("Stop Production Line")) {
-                        //stop();
-                        isRunning = false;
-                    }
+                    ImGui::TextWrapped("Click 'Start Flashing' to detect and flash connected ECUs.");
                 }
 
                 ImGui::End();

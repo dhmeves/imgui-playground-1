@@ -646,4 +646,77 @@ namespace RC40Flasher {
         checkAllCBVersions();
     }
 
+    void ProductionFlasherGUI::startFlashing(const std::string& hexFilePath, const std::string& password) {
+        if (is_flashing) return;
+
+        auto jobs = detector.generateFlashJobs(hexFilePath, password, 16);
+        if (jobs.empty()) return;
+
+        // Parse firmware once
+        std::vector<uint8_t> firmwareData;
+        try {
+            firmwareData = parseIntelHexFile(hexFilePath);
+        }
+        catch (const std::exception& e) {
+            return;
+        }
+
+        is_flashing = true;
+        progress_trackers.clear();
+        flash_futures.clear();
+
+        // Create progress tracker for each job
+        for (const auto& job : jobs) {
+            auto tracker = std::make_shared<FlashProgress>();
+            tracker->controller_id = job.controllerId;
+            progress_trackers.push_back(tracker);
+
+            // Launch async flash operation
+            flash_futures.push_back(std::async(std::launch::async,
+                [this, job, firmwareData, tracker]() {
+                    flashWithProgress(job, firmwareData, tracker);
+                }));
+        }
+    }
+
+    void ProductionFlasherGUI::checkCompletion() {
+        if (!is_flashing) return;
+
+        bool all_complete = true;
+        for (const auto& tracker : progress_trackers) {
+            if (!tracker->is_complete) {
+                all_complete = false;
+                break;
+            }
+        }
+
+        if (all_complete) {
+            for (auto& future : flash_futures) {
+                if (future.valid()) {
+                    future.wait();
+                }
+            }
+            is_flashing = false;
+        }
+    }
+
+    void ProductionFlasherGUI::flashWithProgress(const MultiChannelFlasher::FlashJob& job,
+        const std::vector<uint8_t>& firmwareData,
+        std::shared_ptr<FlashProgress> tracker) {
+        // Use the existing flashSingleECU logic but add progress updates
+        // You can copy the implementation from the artifact above
+        // For brevity, calling the existing method:
+
+        tracker->addLog("Starting flash...");
+        tracker->progress = 0.1f;
+
+        // Call your existing flash method
+        MultiChannelFlasher flasher;
+        bool result = flasher.flashSingleECU(job, firmwareData);
+
+        tracker->progress = 1.0f;
+        tracker->is_success = result;
+        tracker->is_complete = true;
+        tracker->addLog(result ? "Success!" : "Failed!");
+    }
 } // namespace RC40Flasher
