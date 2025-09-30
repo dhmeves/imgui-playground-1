@@ -738,43 +738,51 @@ namespace RC40Flasher {
         return regions;
     }
 
-    bool RC40FlasherDevice::transferDataSparse(uint8_t areaId, const std::vector<uint8_t>& firmwareData, uint32_t baseAddress) {
-        // Find actual data regions (skip large padding areas)
+    bool RC40FlasherDevice::transferDataSparse(uint8_t areaId,
+        const std::vector<uint8_t>& firmwareData,
+        uint32_t baseAddress,
+        std::function<void(float)> progressCallback) {
         auto regions = findDataRegions(firmwareData, baseAddress);
-
-        std::cout << "Found " << regions.size() << " data regions to transfer" << std::endl;
 
         size_t totalBytes = 0;
         for (const auto& region : regions) {
             totalBytes += region.data.size();
         }
 
-        std::cout << "Transferring " << totalBytes << " bytes (skipping "
-            << (firmwareData.size() - totalBytes) << " padding bytes)" << std::endl;
+        size_t bytesTransferred = 0;
 
-        // Transfer each region separately
         for (const auto& region : regions) {
-            std::cout << "Transferring region at 0x" << std::hex << region.address
-                << " (" << std::dec << region.data.size() << " bytes)" << std::endl;
-
-            // Request download for this specific region
             uint16_t maxBlockSize = requestDownload(region.address, region.data.size());
-            if (maxBlockSize == 0) {
-                std::cout << "Request download failed for region 0x" << std::hex << region.address << std::endl;
-                return false;
+            if (maxBlockSize == 0) return false;
+
+            // YOUR EXISTING transferData CALL - but we need to modify it
+            // Instead of calling transferData, inline it with progress reporting:
+            size_t effectiveBlockSize = maxBlockSize - 2;
+            size_t totalBlocks = (region.data.size() + effectiveBlockSize - 1) / effectiveBlockSize;
+
+            for (size_t i = 0; i < totalBlocks; ++i) {
+                uint8_t sequenceCounter = static_cast<uint8_t>((i + 1) & 0xFF);
+                size_t offset = i * effectiveBlockSize;
+                size_t blockSize = (std::min)(effectiveBlockSize, region.data.size() - offset);
+
+                std::vector<uint8_t> request = { 0x36, sequenceCounter };
+                request.insert(request.end(), region.data.begin() + offset,
+                    region.data.begin() + offset + blockSize);
+
+                auto response = sendUDSRequestWithMultiFrame(request, 5000);
+                if (!(response.size() >= 2 && response[0] == 0x76 &&
+                    response[1] == sequenceCounter)) {
+                    return false;
+                }
+
+                // Report progress
+                bytesTransferred += blockSize;
+                if (progressCallback && totalBytes > 0) {
+                    progressCallback((float)bytesTransferred / (float)totalBytes);
+                }
             }
 
-            // Transfer the region data
-            if (!transferData(region.data, maxBlockSize)) {
-                std::cout << "Transfer failed for region 0x" << std::hex << region.address << std::endl;
-                return false;
-            }
-
-            // Transfer exit for this region
-            if (!requestTransferExit()) {
-                std::cout << "Transfer exit failed for region 0x" << std::hex << region.address << std::endl;
-                return false;
-            }
+            if (!requestTransferExit()) return false;
         }
 
         return true;

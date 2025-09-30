@@ -703,20 +703,167 @@ namespace RC40Flasher {
     void ProductionFlasherGUI::flashWithProgress(const MultiChannelFlasher::FlashJob& job,
         const std::vector<uint8_t>& firmwareData,
         std::shared_ptr<FlashProgress> tracker) {
-        // Use the existing flashSingleECU logic but add progress updates
-        // You can copy the implementation from the artifact above
-        // For brevity, calling the existing method:
+        try {
+            ControllerConfig config("RC5-6/40", job.controllerId, job.canChannel);
+            config.canIdRequest = job.requestId;
+            config.canIdResponse = job.responseId;
+            RC40FlasherDevice flasher(config);
 
-        tracker->addLog("Starting flash...");
-        tracker->progress = 0.1f;
+            // Progress weights
+            const float INIT_WEIGHT = 0.05f;
+            const float SECURITY_WEIGHT = 0.10f;
+            const float ASW0_ERASE_WEIGHT = 0.05f;
+            const float ASW0_PROGRAM_WEIGHT = 0.35f;
+            const float ASW0_VERIFY_WEIGHT = 0.05f;
+            const float DS0_ERASE_WEIGHT = 0.05f;
+            const float DS0_PROGRAM_WEIGHT = 0.25f;
+            const float DS0_VERIFY_WEIGHT = 0.05f;
+            const float RESET_WEIGHT = 0.05f;
 
-        // Call your existing flash method
-        MultiChannelFlasher flasher;
-        bool result = flasher.flashSingleECU(job, firmwareData);
+            float base_progress = 0.0f;
 
-        tracker->progress = 1.0f;
-        tracker->is_success = result;
-        tracker->is_complete = true;
-        tracker->addLog(result ? "Success!" : "Failed!");
+            tracker->addLog("Initializing CAN...");
+            if (!flasher.initialize()) {
+                tracker->addLog("CAN init failed");
+                tracker->is_complete = true;
+                return;
+            }
+            base_progress += INIT_WEIGHT;
+            tracker->progress = base_progress;
+
+            // Reset ECU
+            try {
+                std::vector<uint8_t> resetCmd = { 0x11, 0x01 };
+                flasher.sendUDSRequest(resetCmd, 2000);
+                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+            }
+            catch (...) {}
+
+            tracker->addLog("Programming mode...");
+            std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
+            flasher.sendUDSRequest(testerPresent, 1000);
+
+            if (!flasher.diagnosticSessionControl(0x02)) {
+                tracker->addLog("Programming mode failed");
+                tracker->is_complete = true;
+                return;
+            }
+
+            tracker->addLog("Security access...");
+            auto seed = flasher.securityAccessRequestSeed();
+            std::vector<uint8_t> password(job.password.begin(), job.password.end());
+            auto key = AES128Security::calculateKeyFromSeed(seed, password);
+
+            if (!flasher.securityAccessSendKey(key)) {
+                tracker->addLog("Security failed");
+                tracker->is_complete = true;
+                return;
+            }
+            base_progress += SECURITY_WEIGHT;
+            tracker->progress = base_progress;
+
+            // Fingerprint
+            std::vector<uint8_t> dateCmd = { 0x2E, 0xF1, 0x99 };
+            std::string progDate = "30092025";
+            dateCmd.insert(dateCmd.end(), progDate.begin(), progDate.end());
+            auto dateResp = flasher.sendUDSRequestWithMultiFrame(dateCmd, 2000);
+
+            // Split firmware
+            uint32_t asw0Start = 0x09020000;
+            uint32_t asw0End = 0x093BFFFF;
+            uint32_t ds0Start = 0x093C0000;
+            uint32_t asw0Size = asw0End - asw0Start + 1;
+            uint32_t ds0Offset = ds0Start - asw0Start;
+
+            std::vector<uint8_t> asw0Data(firmwareData.begin(),
+                firmwareData.size() >= asw0Size ? firmwareData.begin() + asw0Size : firmwareData.end());
+            if (asw0Data.size() < asw0Size) {
+                asw0Data.resize(asw0Size, 0xFF);
+            }
+
+            std::vector<uint8_t> ds0Data;
+            if (firmwareData.size() > ds0Offset) {
+                ds0Data = std::vector<uint8_t>(firmwareData.begin() + ds0Offset, firmwareData.end());
+            }
+
+            // === ASW0 ===
+            tracker->addLog("Erasing ASW0...");
+            if (!flasher.eraseMemory(0x01)) {
+                tracker->addLog("ASW0 erase failed");
+                tracker->is_complete = true;
+                return;
+            }
+            base_progress += ASW0_ERASE_WEIGHT;
+            tracker->progress = base_progress;
+
+            tracker->addLog("Programming ASW0...");
+            float asw0_prog_start = base_progress;
+            if (!flasher.transferDataSparse(0x01, asw0Data, asw0Start,
+                [tracker, asw0_prog_start, ASW0_PROGRAM_WEIGHT](float sub_prog) {
+                    tracker->progress = asw0_prog_start + (sub_prog * ASW0_PROGRAM_WEIGHT);
+                })) {
+                tracker->addLog("ASW0 program failed");
+                tracker->is_complete = true;
+                return;
+            }
+            base_progress += ASW0_PROGRAM_WEIGHT;
+            tracker->progress = base_progress;
+
+            tracker->addLog("Verifying ASW0...");
+            if (!flasher.checkMemory(0x01)) {
+                tracker->addLog("ASW0 verify failed");
+                tracker->is_complete = true;
+                return;
+            }
+            base_progress += ASW0_VERIFY_WEIGHT;
+            tracker->progress = base_progress;
+
+            // === DS0 ===
+            if (!ds0Data.empty()) {
+                tracker->addLog("Erasing DS0...");
+                if (!flasher.eraseMemory(0x02)) {
+                    tracker->addLog("DS0 erase failed");
+                    tracker->is_complete = true;
+                    return;
+                }
+                base_progress += DS0_ERASE_WEIGHT;
+                tracker->progress = base_progress;
+
+                tracker->addLog("Programming DS0...");
+                float ds0_prog_start = base_progress;
+                if (!flasher.transferDataSparse(0x02, ds0Data, ds0Start,
+                    [tracker, ds0_prog_start, DS0_PROGRAM_WEIGHT](float sub_prog) {
+                        tracker->progress = ds0_prog_start + (sub_prog * DS0_PROGRAM_WEIGHT);
+                    })) {
+                    tracker->addLog("DS0 program failed");
+                    tracker->is_complete = true;
+                    return;
+                }
+                base_progress += DS0_PROGRAM_WEIGHT;
+                tracker->progress = base_progress;
+
+                tracker->addLog("Verifying DS0...");
+                if (!flasher.checkMemory(0x02)) {
+                    tracker->addLog("DS0 verify failed");
+                    tracker->is_complete = true;
+                    return;
+                }
+                base_progress += DS0_VERIFY_WEIGHT;
+                tracker->progress = base_progress;
+            }
+
+            tracker->addLog("Resetting ECU...");
+            flasher.ecuReset();
+            tracker->progress = 1.0f;
+            tracker->addLog("Success!");
+            tracker->is_success = true;
+            tracker->is_complete = true;
+            flasher.cleanup();
+
+        }
+        catch (const std::exception& e) {
+            tracker->addLog(std::string("Error: ") + e.what());
+            tracker->is_complete = true;
+        }
     }
 } // namespace RC40Flasher

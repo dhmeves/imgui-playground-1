@@ -9,6 +9,7 @@
 #include <fstream>      // Add this
 #include <chrono>       // Add this  
 #include <thread>       // Add this
+#include <functional>
 
 // PEAK PCAN includes
 #include "PCANBasic.h"
@@ -75,7 +76,10 @@ namespace RC40Flasher {
         bool requestTransferExit();
         bool checkMemory(uint8_t areaId);
         bool ecuReset();
-        bool transferDataSparse(uint8_t areaId, const std::vector<uint8_t>& firmwareData, uint32_t baseAddress);
+        bool transferDataSparse(uint8_t areaId,
+            const std::vector<uint8_t>& firmwareData,
+            uint32_t baseAddress,
+            std::function<void(float)> progressCallback = nullptr);
     };
 
     class MultiControllerFlasher {
