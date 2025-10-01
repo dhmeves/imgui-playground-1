@@ -439,36 +439,49 @@ namespace RC40Flasher {
     // ===== ProductionFlasherGUI Implementation (USED BY IMGUI) =====
 
     void ProductionFlasherGUI::startFlashing(const std::string& hexFilePath, const std::string& password) {
-        if (is_flashing) return;
+        if (is_flashing || is_initializing) return;
 
-        auto jobs = detector.generateFlashJobs(hexFilePath, password, 16);
-        if (jobs.empty()) return;
+        is_initializing = true;
 
-        // Parse firmware once
-        std::vector<uint8_t> firmwareData;
-        try {
-            firmwareData = parseIntelHexFile(hexFilePath);
-        }
-        catch (const std::exception& e) {
-            return;
-        }
+        // Run channel detection and job generation in separate thread to keep UI responsive
+        std::thread init_thread([this, hexFilePath, password]() {
+            auto jobs = detector.generateFlashJobs(hexFilePath, password, 16);
 
-        is_flashing = true;
-        progress_trackers.clear();
-        flash_futures.clear();
+            if (jobs.empty()) {
+                is_initializing = false;
+                return;
+            }
 
-        // Create progress tracker for each job
-        for (const auto& job : jobs) {
-            auto tracker = std::make_shared<FlashProgress>();
-            tracker->controller_id = job.controllerId;
-            progress_trackers.push_back(tracker);
+            // Parse firmware once
+            std::vector<uint8_t> firmwareData;
+            try {
+                firmwareData = parseIntelHexFile(hexFilePath);
+            }
+            catch (const std::exception& e) {
+                is_initializing = false;
+                return;
+            }
 
-            // Launch async flash operation
-            flash_futures.push_back(std::async(std::launch::async,
-                [this, job, firmwareData, tracker]() {
-                    flashWithProgress(job, firmwareData, tracker);
-                }));
-        }
+            is_initializing = false;
+            is_flashing = true;
+            progress_trackers.clear();
+            flash_futures.clear();
+
+            // Create progress tracker for each job
+            for (const auto& job : jobs) {
+                auto tracker = std::make_shared<FlashProgress>();
+                tracker->controller_id = job.controllerId;
+                progress_trackers.push_back(tracker);
+
+                // Launch async flash operation
+                flash_futures.push_back(std::async(std::launch::async,
+                    [this, job, firmwareData, tracker]() {
+                        flashWithProgress(job, firmwareData, tracker);
+                    }));
+            }
+            });
+
+        init_thread.detach();
     }
 
     void ProductionFlasherGUI::checkCompletion() {
@@ -556,9 +569,20 @@ namespace RC40Flasher {
             base_progress += SECURITY_WEIGHT;
             tracker->progress = base_progress;
 
-            // Fingerprint
+            // Fingerprint with current date
             std::vector<uint8_t> dateCmd = { 0x2E, 0xF1, 0x99 };
-            std::string progDate = "30092025";
+
+            // Get current date from system
+            auto now = std::chrono::system_clock::now();
+            std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+            std::tm local_time;
+            localtime_s(&local_time, &now_time);
+
+            // Format as DDMMYYYY
+            char dateBuffer[9];
+            std::strftime(dateBuffer, sizeof(dateBuffer), "%d%m%Y", &local_time);
+            std::string progDate(dateBuffer);
+
             dateCmd.insert(dateCmd.end(), progDate.begin(), progDate.end());
             auto dateResp = flasher.sendUDSRequestWithMultiFrame(dateCmd, 2000);
 

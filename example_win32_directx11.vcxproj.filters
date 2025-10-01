@@ -94,6 +94,12 @@
     <Filter Include="Source Files\RC40Flasher">
       <UniqueIdentifier>{a77997f7-2838-4363-bad8-3da0ddd970e6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\imspinner">
+      <UniqueIdentifier>{18b75ca7-9862-4016-bbe3-0d5f2c183b32}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\imspinner">
+      <UniqueIdentifier>{ea3c90ab-d618-45f4-983b-b6e818a6840c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -195,6 +201,15 @@
     <ClInclude Include="RC40Flasher\ProductionFlasher.h">
       <Filter>Header Files\RC40Flasher</Filter>
     </ClInclude>
+    <ClInclude Include="imspinner\cimspinner.h">
+      <Filter>Header Files\imspinner</Filter>
+    </ClInclude>
+    <ClInclude Include="imspinner\cimspinner_config.h">
+      <Filter>Header Files\imspinner</Filter>
+    </ClInclude>
+    <ClInclude Include="imspinner\imspinner.h">
+      <Filter>Header Files\imspinner</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -277,6 +292,9 @@
     </ClCompile>
     <ClCompile Include="RC40Flasher\ProductionFlasher.cpp">
       <Filter>Source Files\RC40Flasher</Filter>
+    </ClCompile>
+    <ClCompile Include="imspinner\cimspinner.cpp">
+      <Filter>Source Files\imspinner</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

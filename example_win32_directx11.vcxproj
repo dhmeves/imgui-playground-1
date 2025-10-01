@@ -87,7 +87,7 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling;imspinner</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -103,7 +103,7 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>fsc;imgui;imguizmo;kalman;pcan;sudoku;json;NativeFileDialog;kinematics;openssl;RC40Flasher;motionController;joystickHandling;imspinner</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -172,6 +172,9 @@
     <ClInclude Include="imgui\imstb_rectpack.h" />
     <ClInclude Include="imgui\imstb_textedit.h" />
     <ClInclude Include="imgui\imstb_truetype.h" />
+    <ClInclude Include="imspinner\cimspinner.h" />
+    <ClInclude Include="imspinner\cimspinner_config.h" />
+    <ClInclude Include="imspinner\imspinner.h" />
     <ClInclude Include="joystickHandling\joystickHandling.h" />
     <ClInclude Include="json\json\json-forwards.h" />
     <ClInclude Include="json\json\json.h" />
@@ -205,6 +208,7 @@
     <ClCompile Include="imgui\imgui_stdlib.cpp" />
     <ClCompile Include="imgui\imgui_tables.cpp" />
     <ClCompile Include="imgui\imgui_widgets.cpp" />
+    <ClCompile Include="imspinner\cimspinner.cpp" />
     <ClCompile Include="joystickHandling\joystickHandling.c" />
     <ClCompile Include="json\jsoncpp.cpp" />
     <ClCompile Include="kalman\kalman.cpp" />

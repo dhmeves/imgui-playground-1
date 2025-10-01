@@ -34,6 +34,10 @@
 // START - 3D PROJECTION
 #include "ImGuizmo.h" // 3D projection
 
+// IMSPINNERS/ANIMATIONS
+#define IMSPINNER_DEMO
+#include "imspinner.h"
+
 #define uint64 uint64_t
 #define sint64 int64_t
 #define uint32 uint32_t
@@ -5289,11 +5293,12 @@ int main(int, char**)
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
 
+            //ImSpinner::demoSpinners();
+
             static bool show_production_flasher = true;
             if (show_production_flasher) {
                 ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_FirstUseEver);
                 ImGui::Begin("Production ECU Flasher", &show_production_flasher);
-
                 static RC40Flasher::ProductionFlasherGUI flasher_gui;
                 static std::string hex_path = "firmware/rc5_6_40_asw0.hex";
                 static std::string password = "DEF_PASSWORD_021";
@@ -5304,14 +5309,19 @@ int main(int, char**)
                 ImGui::Separator();
 
                 // Control panel
-                ImGui::BeginDisabled(flasher_gui.isFlashing());
+                ImGui::BeginDisabled(flasher_gui.isFlashing() || flasher_gui.isInitializing());
                 if (ImGui::Button("Start Flashing", ImVec2(200, 40))) {
                     flasher_gui.startFlashing(hex_path, password);
                 }
                 ImGui::EndDisabled();
 
                 ImGui::SameLine();
-                if (flasher_gui.isFlashing()) {
+                if (flasher_gui.isInitializing()) {
+                    ImSpinner::SpinnerTwinAng360("SpinnerTwinAng360", 16.0f, 11.0f, 4.0f, ImColor(255, 255, 255), ImColor(255, 0, 0), 2.8f, 2.5f, 0);
+                    ImGui::SameLine();
+                    ImGui::Text("Detecting channels...");
+                }
+                else if (flasher_gui.isFlashing()) {
                     ImGui::Text("Flashing in progress...");
                 }
 

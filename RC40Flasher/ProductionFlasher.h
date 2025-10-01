@@ -241,6 +241,7 @@ namespace RC40Flasher {
         std::vector<std::shared_ptr<FlashProgress>> progress_trackers; ///< Progress for each ECU
         std::vector<std::future<void>> flash_futures;                  ///< Async operation handles
         std::atomic<bool> is_flashing{ false };                        ///< Currently flashing flag
+        std::atomic<bool> is_initializing{ false };                    ///< Channel detection in progress
         AutoDetectMultiChannelFlasher detector;                        ///< Channel detector
 
         /**
@@ -280,6 +281,14 @@ namespace RC40Flasher {
          */
         bool isFlashing() const {
             return is_flashing;
+        }
+
+        /**
+         * @brief Check if channel detection/initialization is in progress
+         * @return true if detecting channels
+         */
+        bool isInitializing() const {
+            return is_initializing;
         }
 
         /**
