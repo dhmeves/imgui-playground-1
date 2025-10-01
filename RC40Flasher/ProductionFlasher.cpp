@@ -1,11 +1,20 @@
+/**
+ * @file ProductionFlasher.cpp
+ * @brief Implementation of multi-ECU production flashing
+ */
+
 #include "ProductionFlasher.h"
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
 
 namespace RC40Flasher {
+
+    // Global mutex for serializing programming mode entry
     static std::mutex programmingMutex;
-    // MultiChannelFlasher implementation
+
+    // ===== MultiChannelFlasher Implementation =====
+
     void MultiChannelFlasher::threadSafeLog(const std::string& message) {
         std::lock_guard<std::mutex> lock(logMutex);
         std::cout << message << std::endl;
@@ -17,60 +26,17 @@ namespace RC40Flasher {
         config.canIdResponse = job.responseId;
 
         RC40FlasherDevice flasher(config);
-        threadSafeLog("[" + job.controllerId + "] Resetting ECU to clean state...");
 
+        // Reset ECU to clean state
+        threadSafeLog("[" + job.controllerId + "] Resetting ECU to clean state...");
         try {
             std::vector<uint8_t> resetCmd = { 0x11, 0x01 }; // Hard reset
             flasher.sendUDSRequest(resetCmd, 2000);
             std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // Wait for reboot
         }
         catch (...) {
-            // Reset may not respond, that's normal
+            // Reset may not respond - that's normal
         }
-
-        /*
-        threadSafeLog("[" + job.controllerId + "] Flashing CB...");
-        if (!flasher.eraseMemory(0x00)) {
-            threadSafeLog("[" + job.controllerId + "] CB erase failed");
-            return false;
-        }
-
-        // You'll need CB firmware data - either:
-        // 1. Separate CB hex file, or 
-        // 2. Extract CB from combined firmware
-
-        // For now, create dummy CB data or load separate file:
-        std::string cbHexFile = "firmware/rc5_6_40_cb.hex";
-        std::vector<uint8_t> cbData;
-        try {
-            cbData = parseIntelHexFile(cbHexFile);
-        }
-        catch (...) {
-            // If no separate CB file, create minimal CB data
-            //cbData.resize(0x48000, 0xFF); // CB size for RC5-6/40
-            //threadSafeLog("[" + job.controllerId + "] Using dummy CB data");
-        }
-
-        uint32_t cbAddress = 0x08FD8000; // CB start address
-        if (!flasher.transferDataSparse(0x00, cbData, cbAddress)) {
-            threadSafeLog("[" + job.controllerId + "] CB transfer failed");
-            return false;
-        }
-
-        if (!flasher.checkMemory(0x00)) {
-            threadSafeLog("[" + job.controllerId + "] CB check failed");
-            return false;
-        }
-
-        threadSafeLog("[" + job.controllerId + "] CB flash complete, continuing with ASW0...");
-        */
-
-        // Add startup delay based on channel number to stagger initialization
-        //int channelDelay = (job.canChannel - PCAN_USBBUS1) * 3000; // 1 second per channel
-        //if (channelDelay > 0) {
-        //    threadSafeLog("[" + job.controllerId + "] Waiting " + std::to_string(channelDelay / 1000) + "s before start...");
-        //    std::this_thread::sleep_for(std::chrono::milliseconds(channelDelay));
-        //}
 
         threadSafeLog("[" + job.controllerId + "] Starting flash process...");
 
@@ -79,29 +45,18 @@ namespace RC40Flasher {
             return false;
         }
 
-        // Load firmware data first (before any CAN operations)
-        //std::vector<uint8_t> firmwareData;
-        //try {
-        //    firmwareData = flasher.parseIntelHexFile(job.hexFilePath);
-        //    threadSafeLog("[" + job.controllerId + "] Loaded " + std::to_string(firmwareData.size()) + " bytes");
-        //}
-        //catch (const std::exception& e) {
-        //    threadSafeLog("[" + job.controllerId + "] HEX file error: " + std::string(e.what()));
-        //    return false;
-        //}
-
         try {
             // Tester present
             std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
             flasher.sendUDSRequest(testerPresent, 1000);
+
+            // Enter programming mode (serialized to avoid conflicts)
             {
                 std::lock_guard<std::mutex> lock(programmingMutex);
                 if (!flasher.diagnosticSessionControl(0x02)) {
                     threadSafeLog("[" + job.controllerId + "] Programming mode failed");
                     return false;
                 }
-                // Small delay to let ECU fully enter programming mode
-                //std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
             // Security access
@@ -114,18 +69,18 @@ namespace RC40Flasher {
                 return false;
             }
 
-            // Fingerprint data
+            // Write fingerprint data
             std::vector<uint8_t> dateCmd = { 0x2E, 0xF1, 0x99 };
-            std::string progDate = "22092025";
+            std::string progDate = "30092025"; // Current date
             dateCmd.insert(dateCmd.end(), progDate.begin(), progDate.end());
 
             auto dateResp = flasher.sendUDSRequestWithMultiFrame(dateCmd, 2000);
             if (!(dateResp.size() >= 2 && dateResp[0] == 0x6E)) {
-                threadSafeLog("[" + job.controllerId + "] Fingerprint failed");
+                threadSafeLog("[" + job.controllerId + "] Fingerprint write failed");
                 return false;
             }
 
-            // Split firmware data
+            // Split firmware data into ASW0 and DS0
             uint32_t asw0Start = 0x09020000;
             uint32_t asw0End = 0x093BFFFF;
             uint32_t ds0Start = 0x093C0000;
@@ -136,7 +91,7 @@ namespace RC40Flasher {
                 firmwareData.size() >= asw0Size ? firmwareData.begin() + asw0Size : firmwareData.end());
 
             if (asw0Data.size() < asw0Size) {
-                asw0Data.resize(asw0Size, 0xFF);
+                asw0Data.resize(asw0Size, 0xFF); // Pad with 0xFF
             }
 
             std::vector<uint8_t> ds0Data;
@@ -144,7 +99,7 @@ namespace RC40Flasher {
                 ds0Data = std::vector<uint8_t>(firmwareData.begin() + ds0Offset, firmwareData.end());
             }
 
-            // Flash ASW0
+            // Flash ASW0 (Application Software)
             threadSafeLog("[" + job.controllerId + "] Flashing ASW0...");
             if (!flasher.eraseMemory(0x01)) {
                 threadSafeLog("[" + job.controllerId + "] ASW0 erase failed");
@@ -157,11 +112,11 @@ namespace RC40Flasher {
             }
 
             if (!flasher.checkMemory(0x01)) {
-                threadSafeLog("[" + job.controllerId + "] ASW0 check failed");
+                threadSafeLog("[" + job.controllerId + "] ASW0 verification failed");
                 return false;
             }
 
-            // Flash DS0 if exists
+            // Flash DS0 (Data Set) if present
             if (!ds0Data.empty()) {
                 threadSafeLog("[" + job.controllerId + "] Flashing DS0...");
                 if (!flasher.eraseMemory(0x02)) {
@@ -175,12 +130,12 @@ namespace RC40Flasher {
                 }
 
                 if (!flasher.checkMemory(0x02)) {
-                    threadSafeLog("[" + job.controllerId + "] DS0 check failed");
+                    threadSafeLog("[" + job.controllerId + "] DS0 verification failed");
                     return false;
                 }
             }
 
-            // Reset ECU
+            // Reset ECU to run new firmware
             flasher.ecuReset();
             threadSafeLog("[" + job.controllerId + "] Flash completed successfully!");
             return true;
@@ -198,7 +153,7 @@ namespace RC40Flasher {
     std::map<std::string, bool> MultiChannelFlasher::flashMultipleECUs(const std::vector<FlashJob>& jobs) {
         if (jobs.empty()) return {};
 
-        // Parse HEX file once
+        // Parse HEX file once and share across all threads
         threadSafeLog("Loading firmware file: " + jobs[0].hexFilePath);
         std::vector<uint8_t> firmwareData;
         try {
@@ -213,7 +168,7 @@ namespace RC40Flasher {
         std::vector<std::future<std::pair<std::string, bool>>> futures;
         threadSafeLog("Starting simultaneous flash of " + std::to_string(jobs.size()) + " ECUs...");
 
-        // Launch threads with shared firmware data
+        // Launch async threads for each ECU
         for (const auto& job : jobs) {
             auto future = std::async(std::launch::async, [this, job, firmwareData]() {
                 bool result = flashSingleECU(job, firmwareData);
@@ -229,7 +184,7 @@ namespace RC40Flasher {
             results[result.first] = result.second;
         }
 
-        // Summary
+        // Print summary
         int successCount = 0;
         int failCount = 0;
         for (const auto& result : results) {
@@ -250,7 +205,8 @@ namespace RC40Flasher {
         return results;
     }
 
-    // AutoDetectMultiChannelFlasher implementation
+    // ===== AutoDetectMultiChannelFlasher Implementation =====
+
     std::vector<TPCANHandle> AutoDetectMultiChannelFlasher::detectChannels() {
         std::vector<TPCANHandle> availableChannels;
 
@@ -311,13 +267,12 @@ namespace RC40Flasher {
         return jobs;
     }
 
-    // ProductionLineFlasher implementation
+    // ===== ProductionLineFlasher Implementation (UNUSED in GUI) =====
+
     ProductionLineFlasher::ECUStation::ECUStation(int id, TPCANHandle ch) :
         stationId(id), canChannel(ch), state(DISCONNECTED),
         controllerId(""), lastStateChange(std::chrono::steady_clock::now()),
         flashAttempts(0) {}
-
-    
 
     void ProductionLineFlasher::scanStations(std::vector<ECUStation>& stations) {
         for (auto& station : stations) {
@@ -331,7 +286,8 @@ namespace RC40Flasher {
                     station.controllerId = "RC40_ST" + std::to_string(station.stationId);
                     station.lastStateChange = now;
                     station.flashAttempts = 0;
-                    threadSafeLog("[Station " + std::to_string(station.stationId) + "] ECU detected: " + station.controllerId);
+                    threadSafeLog("[Station " + std::to_string(station.stationId) +
+                        "] ECU detected: " + station.controllerId);
                 }
                 break;
 
@@ -348,15 +304,18 @@ namespace RC40Flasher {
                 if (!ecuPresent) {
                     station.state = DISCONNECTED;
                     station.lastStateChange = now;
-                    threadSafeLog("[Station " + std::to_string(station.stationId) + "] ECU removed - ready for next");
+                    threadSafeLog("[Station " + std::to_string(station.stationId) +
+                        "] ECU removed - ready for next");
                 }
                 else {
                     // Show removal prompt after 10 seconds
-                    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - station.lastStateChange).count();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                        now - station.lastStateChange).count();
                     if (elapsed > 10 && station.state != READY_FOR_REMOVAL) {
                         station.state = READY_FOR_REMOVAL;
                         std::string status = (station.state == FLASH_SUCCESS) ? "SUCCESS" : "FAILED";
-                        threadSafeLog("[Station " + std::to_string(station.stationId) + "] Flash " + status + " - Please remove ECU");
+                        threadSafeLog("[Station " + std::to_string(station.stationId) +
+                            "] Flash " + status + " - Please remove ECU");
                     }
                 }
                 break;
@@ -397,7 +356,7 @@ namespace RC40Flasher {
         while (!stopScanning) {
             scanStations(stations);
 
-            // Start flashing for detected ECUs
+            // Start flashing for detected ECUs (after 2 second settle time)
             for (auto& station : stations) {
                 if (station.state == DETECTED) {
                     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
@@ -412,24 +371,29 @@ namespace RC40Flasher {
                             FlashJob job;
                             job.controllerId = station.controllerId;
                             job.canChannel = station.canChannel;
-                            job.hexFilePath = ""; // Not needed anymore
+                            job.hexFilePath = "";
                             job.password = password;
                             job.requestId = 0x18DA01FA;
                             job.responseId = 0x18DAFA01;
 
-                            threadSafeLog("[Station " + std::to_string(station.stationId) + "] Starting flash...");
+                            threadSafeLog("[Station " + std::to_string(station.stationId) +
+                                "] Starting flash...");
 
-                            bool result = flashSingleECU(job, firmwareData); // Pass firmware data
+                            bool result = flashSingleECU(job, firmwareData);
 
                             station.flashAttempts++;
                             station.state = result ? FLASH_SUCCESS : FLASH_FAILED;
                             station.lastStateChange = std::chrono::steady_clock::now();
 
                             if (result) {
-                                threadSafeLog("[Station " + std::to_string(station.stationId) + "] *** FLASH SUCCESS *** (attempt " + std::to_string(station.flashAttempts) + ")");
+                                threadSafeLog("[Station " + std::to_string(station.stationId) +
+                                    "] *** FLASH SUCCESS *** (attempt " +
+                                    std::to_string(station.flashAttempts) + ")");
                             }
                             else {
-                                threadSafeLog("[Station " + std::to_string(station.stationId) + "] *** FLASH FAILED *** (attempt " + std::to_string(station.flashAttempts) + ")");
+                                threadSafeLog("[Station " + std::to_string(station.stationId) +
+                                    "] *** FLASH FAILED *** (attempt " +
+                                    std::to_string(station.flashAttempts) + ")");
                             }
                             });
                         flashThread.detach();
@@ -463,7 +427,8 @@ namespace RC40Flasher {
             case READY_FOR_REMOVAL: status = "Please Remove ECU"; break;
             }
             threadSafeLog("Station " + std::to_string(station.stationId) + ": " + status +
-                (station.flashAttempts > 0 ? " (attempts: " + std::to_string(station.flashAttempts) + ")" : ""));
+                (station.flashAttempts > 0 ? " (attempts: " +
+                    std::to_string(station.flashAttempts) + ")" : ""));
         }
     }
 
@@ -471,180 +436,7 @@ namespace RC40Flasher {
         stopScanning = true;
     }
 
-    // Test functions
-    void testAutoDetectMultiFlash() {
-        std::cout << "=== Auto-Detect Multi-Channel Flash Test ===" << std::endl;
-
-        AutoDetectMultiChannelFlasher flasher;
-
-        auto jobs = flasher.generateFlashJobs(
-            "firmware/rc5_6_40_asw0.hex",
-            "DEF_PASSWORD_021",
-            16
-        );
-
-        if (jobs.empty()) {
-            std::cout << "No flash jobs generated - check PCAN hardware" << std::endl;
-            return;
-        }
-
-        std::cout << "\n=== Flash Plan ===" << std::endl;
-        for (const auto& job : jobs) {
-
-            if (job.canChannel > PCAN_USBBUS8) // for some reason the PCAN_USB enum changes its increment after 8
-                std::cout << job.controllerId << ": Channel " << (job.canChannel - PCAN_USBBUS1 - 0x4AF) << std::endl;
-            else
-                std::cout << job.controllerId << ": Channel " << (job.canChannel - PCAN_USBBUS1 + 1) << std::endl;
-        }
-
-        std::cout << "\nPress Enter to start simultaneous flashing (or Ctrl+C to cancel)...";
-        std::cin.get();
-
-        auto results = flasher.flashMultipleECUs(jobs);
-
-        int success = 0;
-        int failed = 0;
-        for (const auto& result : results) {
-            if (result.second) success++;
-            else failed++;
-        }
-
-        std::cout << "\n=== FINAL RESULTS ===" << std::endl;
-        std::cout << "Successfully flashed: " << success << " ECUs" << std::endl;
-        std::cout << "Failed: " << failed << " ECUs" << std::endl;
-
-        if (failed > 0) {
-            std::cout << "\nFailed ECUs:" << std::endl;
-            for (const auto& result : results) {
-                if (!result.second) {
-                    std::cout << "- " << result.first << std::endl;
-                }
-            }
-        }
-    }
-
-    void testChannelDetection() {
-        std::cout << "=== Quick Channel Detection Test ===" << std::endl;
-
-        AutoDetectMultiChannelFlasher flasher;
-        auto channels = flasher.detectChannels();
-
-        if (channels.size() >= 6) {
-            std::cout << "Perfect! Found " << channels.size() << " channels - ready for 6-ECU flashing" << std::endl;
-        }
-        else if (channels.size() > 0) {
-            std::cout << "Found " << channels.size() << " channels - can flash " << channels.size() << " ECUs simultaneously" << std::endl;
-        }
-        else {
-            std::cout << "No channels found - check PCAN-USB X6 connection" << std::endl;
-        }
-
-        std::cout << "\nDetected channels:" << std::endl;
-        for (size_t i = 0; i < channels.size(); ++i) {
-            if (channels[i] > PCAN_USBBUS8) // for some reason the PCAN_USB enum changes its increment after 8
-                std::cout << "PCAN_USBBUS" << (channels[i] - PCAN_USBBUS1 - 0x4AF) << std::endl;
-            else
-                std::cout << "PCAN_USBBUS" << (channels[i] - PCAN_USBBUS1 + 1) << std::endl;
-        }
-    }
-
-    void testProductionLineFlashing() {
-        std::cout << "=== Production Line ECU Flashing ===" << std::endl;
-        std::cout << "This will continuously monitor for ECU insertion and flash automatically." << std::endl;
-        std::cout << "Press Ctrl+C to stop the production line." << std::endl;
-        std::cout << "Press Enter to start...";
-        std::cin.get();
-
-        ProductionLineFlasher flasher;
-
-        flasher.runProductionLine(
-            "firmware/rc5_6_40_asw0.hex",
-            "DEF_PASSWORD_021"
-        );
-    }
-
-    std::string readCBVersion(TPCANHandle channel) {
-        RC40Flasher::ControllerConfig config("RC5-6/40", "CB_VERSION_CHECK", channel);
-        config.canIdRequest = 0x18DA01FA;
-        config.canIdResponse = 0x18DAFA01;
-
-        RC40Flasher::RC40FlasherDevice flasher(config);
-
-        if (!flasher.initialize()) {
-            return "CAN_INIT_FAILED";
-        }
-
-        try {
-            // Send tester present first
-            std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
-            flasher.sendUDSRequest(testerPresent, 1000);
-
-            // Read CB version using DID 0xF180
-            std::vector<uint8_t> readCmd = { 0x22, 0xF1, 0x80 };
-            auto response = flasher.sendUDSRequest(readCmd, 2000);
-
-            if (response.size() >= 3 && response[1] == 0x62 && response[2] == 0xF1 && response[3] == 0x80) {
-                // Extract version data (skip first 3 bytes: 62 F1 80)
-                std::string version = "";
-                for (size_t i = 4; i < response.size(); ++i) {
-                    if (response[i] >= 0x20 && response[i] <= 0x7E) { // Printable ASCII
-                        version += static_cast<char>(response[i]);
-                    }
-                    else {
-                        version += "\\x" + std::to_string(response[i]);
-                    }
-                }
-                flasher.cleanup();
-                return version;
-            }
-            else {
-                flasher.cleanup();
-                return "READ_FAILED";
-            }
-
-        }
-        catch (const std::exception& e) {
-            flasher.cleanup();
-            return "EXCEPTION: " + std::string(e.what());
-        }
-    }
-
-    void checkAllCBVersions() {
-        std::cout << "=== CB Version Check for All ECUs ===" << std::endl;
-
-        RC40Flasher::AutoDetectMultiChannelFlasher detector;
-        auto channels = detector.detectChannels();
-
-        if (channels.empty()) {
-            std::cout << "No channels detected" << std::endl;
-            return;
-        }
-
-        for (size_t i = 0; i < channels.size(); ++i) {
-            std::cout << "Channel " << (channels[i] - PCAN_USBBUS1 + 1) << ": ";
-
-            // Check if ECU responds first
-            if (RC40Flasher::pingECU(channels[i])) {
-                std::string version = readCBVersion(channels[i]);
-                std::cout << "CB Version: " << version << std::endl;
-            }
-            else {
-                std::cout << "No ECU detected" << std::endl;
-            }
-        }
-
-        std::cout << "\nDone checking CB versions." << std::endl;
-    }
-
-    // Add this to the test functions section
-    void testCBVersionCheck() {
-        std::cout << "=== Testing CB Version Reading ===" << std::endl;
-        std::cout << "This will read CB version (DID 0xF180) from all connected ECUs" << std::endl;
-        std::cout << "Press Enter to start...";
-        std::cin.get();
-
-        checkAllCBVersions();
-    }
+    // ===== ProductionFlasherGUI Implementation (USED BY IMGUI) =====
 
     void ProductionFlasherGUI::startFlashing(const std::string& hexFilePath, const std::string& password) {
         if (is_flashing) return;
@@ -700,16 +492,18 @@ namespace RC40Flasher {
         }
     }
 
-    void ProductionFlasherGUI::flashWithProgress(const MultiChannelFlasher::FlashJob& job,
+    void ProductionFlasherGUI::flashWithProgress(
+        const MultiChannelFlasher::FlashJob& job,
         const std::vector<uint8_t>& firmwareData,
         std::shared_ptr<FlashProgress> tracker) {
+
         try {
             ControllerConfig config("RC5-6/40", job.controllerId, job.canChannel);
             config.canIdRequest = job.requestId;
             config.canIdResponse = job.responseId;
             RC40FlasherDevice flasher(config);
 
-            // Progress weights
+            // Progress weights for each operation
             const float INIT_WEIGHT = 0.05f;
             const float SECURITY_WEIGHT = 0.10f;
             const float ASW0_ERASE_WEIGHT = 0.05f;
@@ -786,7 +580,7 @@ namespace RC40Flasher {
                 ds0Data = std::vector<uint8_t>(firmwareData.begin() + ds0Offset, firmwareData.end());
             }
 
-            // === ASW0 ===
+            // === ASW0 Flash ===
             tracker->addLog("Erasing ASW0...");
             if (!flasher.eraseMemory(0x01)) {
                 tracker->addLog("ASW0 erase failed");
@@ -818,7 +612,7 @@ namespace RC40Flasher {
             base_progress += ASW0_VERIFY_WEIGHT;
             tracker->progress = base_progress;
 
-            // === DS0 ===
+            // === DS0 Flash ===
             if (!ds0Data.empty()) {
                 tracker->addLog("Erasing DS0...");
                 if (!flasher.eraseMemory(0x02)) {
@@ -866,4 +660,186 @@ namespace RC40Flasher {
             tracker->is_complete = true;
         }
     }
+
+    // ===== Test Functions (UNUSED in GUI - kept for command-line testing) =====
+
+    void testAutoDetectMultiFlash() {
+        std::cout << "=== Auto-Detect Multi-Channel Flash Test ===" << std::endl;
+
+        AutoDetectMultiChannelFlasher flasher;
+
+        auto jobs = flasher.generateFlashJobs(
+            "firmware/rc5_6_40_asw0.hex",
+            "DEF_PASSWORD_021",
+            16
+        );
+
+        if (jobs.empty()) {
+            std::cout << "No flash jobs generated - check PCAN hardware" << std::endl;
+            return;
+        }
+
+        std::cout << "\n=== Flash Plan ===" << std::endl;
+        for (const auto& job : jobs) {
+            // Handle PCAN enum discontinuity after USBBUS8
+            if (job.canChannel > PCAN_USBBUS8)
+                std::cout << job.controllerId << ": Channel "
+                << (job.canChannel - PCAN_USBBUS1 - 0x4AF) << std::endl;
+            else
+                std::cout << job.controllerId << ": Channel "
+                << (job.canChannel - PCAN_USBBUS1 + 1) << std::endl;
+        }
+
+        std::cout << "\nPress Enter to start simultaneous flashing (or Ctrl+C to cancel)...";
+        std::cin.get();
+
+        auto results = flasher.flashMultipleECUs(jobs);
+
+        int success = 0;
+        int failed = 0;
+        for (const auto& result : results) {
+            if (result.second) success++;
+            else failed++;
+        }
+
+        std::cout << "\n=== FINAL RESULTS ===" << std::endl;
+        std::cout << "Successfully flashed: " << success << " ECUs" << std::endl;
+        std::cout << "Failed: " << failed << " ECUs" << std::endl;
+
+        if (failed > 0) {
+            std::cout << "\nFailed ECUs:" << std::endl;
+            for (const auto& result : results) {
+                if (!result.second) {
+                    std::cout << "- " << result.first << std::endl;
+                }
+            }
+        }
+    }
+
+    void testChannelDetection() {
+        std::cout << "=== Quick Channel Detection Test ===" << std::endl;
+
+        AutoDetectMultiChannelFlasher flasher;
+        auto channels = flasher.detectChannels();
+
+        if (channels.size() >= 6) {
+            std::cout << "Perfect! Found " << channels.size()
+                << " channels - ready for 6-ECU flashing" << std::endl;
+        }
+        else if (channels.size() > 0) {
+            std::cout << "Found " << channels.size() << " channels - can flash "
+                << channels.size() << " ECUs simultaneously" << std::endl;
+        }
+        else {
+            std::cout << "No channels found - check PCAN-USB X6 connection" << std::endl;
+        }
+
+        std::cout << "\nDetected channels:" << std::endl;
+        for (size_t i = 0; i < channels.size(); ++i) {
+            // Handle PCAN enum discontinuity after USBBUS8
+            if (channels[i] > PCAN_USBBUS8)
+                std::cout << "PCAN_USBBUS" << (channels[i] - PCAN_USBBUS1 - 0x4AF) << std::endl;
+            else
+                std::cout << "PCAN_USBBUS" << (channels[i] - PCAN_USBBUS1 + 1) << std::endl;
+        }
+    }
+
+    void testProductionLineFlashing() {
+        std::cout << "=== Production Line ECU Flashing ===" << std::endl;
+        std::cout << "This will continuously monitor for ECU insertion and flash automatically." << std::endl;
+        std::cout << "Press Ctrl+C to stop the production line." << std::endl;
+        std::cout << "Press Enter to start...";
+        std::cin.get();
+
+        ProductionLineFlasher flasher;
+
+        flasher.runProductionLine(
+            "firmware/rc5_6_40_asw0.hex",
+            "DEF_PASSWORD_021"
+        );
+    }
+
+    std::string readCBVersion(TPCANHandle channel) {
+        RC40Flasher::ControllerConfig config("RC5-6/40", "CB_VERSION_CHECK", channel);
+        config.canIdRequest = 0x18DA01FA;
+        config.canIdResponse = 0x18DAFA01;
+
+        RC40Flasher::RC40FlasherDevice flasher(config);
+
+        if (!flasher.initialize()) {
+            return "CAN_INIT_FAILED";
+        }
+
+        try {
+            // Send tester present first
+            std::vector<uint8_t> testerPresent = { 0x3E, 0x00 };
+            flasher.sendUDSRequest(testerPresent, 1000);
+
+            // Read CB version using DID 0xF180
+            std::vector<uint8_t> readCmd = { 0x22, 0xF1, 0x80 };
+            auto response = flasher.sendUDSRequest(readCmd, 2000);
+
+            if (response.size() >= 3 && response[1] == 0x62 &&
+                response[2] == 0xF1 && response[3] == 0x80) {
+                // Extract version data (skip header: 62 F1 80)
+                std::string version = "";
+                for (size_t i = 4; i < response.size(); ++i) {
+                    if (response[i] >= 0x20 && response[i] <= 0x7E) { // Printable ASCII
+                        version += static_cast<char>(response[i]);
+                    }
+                    else {
+                        version += "\\x" + std::to_string(response[i]);
+                    }
+                }
+                flasher.cleanup();
+                return version;
+            }
+            else {
+                flasher.cleanup();
+                return "READ_FAILED";
+            }
+
+        }
+        catch (const std::exception& e) {
+            flasher.cleanup();
+            return "EXCEPTION: " + std::string(e.what());
+        }
+    }
+
+    void checkAllCBVersions() {
+        std::cout << "=== CB Version Check for All ECUs ===" << std::endl;
+
+        RC40Flasher::AutoDetectMultiChannelFlasher detector;
+        auto channels = detector.detectChannels();
+
+        if (channels.empty()) {
+            std::cout << "No channels detected" << std::endl;
+            return;
+        }
+
+        for (size_t i = 0; i < channels.size(); ++i) {
+            std::cout << "Channel " << (channels[i] - PCAN_USBBUS1 + 1) << ": ";
+
+            // Check if ECU responds first
+            if (RC40Flasher::pingECU(channels[i])) {
+                std::string version = readCBVersion(channels[i]);
+                std::cout << "CB Version: " << version << std::endl;
+            }
+            else {
+                std::cout << "No ECU detected" << std::endl;
+            }
+        }
+
+        std::cout << "\nDone checking CB versions." << std::endl;
+    }
+
+    void testCBVersionCheck() {
+        std::cout << "=== Testing CB Version Reading ===" << std::endl;
+        std::cout << "This will read CB version (DID 0xF180) from all connected ECUs" << std::endl;
+        std::cout << "Press Enter to start...";
+        std::cin.get();
+
+        checkAllCBVersions();
+    }
+
 } // namespace RC40Flasher
