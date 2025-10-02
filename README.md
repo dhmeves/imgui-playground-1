@@ -1,3 +1,1 @@
-In order to run, you will need the following:
-- Put the PCANBasic.dll into C:/Windows/System32.  Either use the dll from this repo in the /pcan directory or download from PEAK's website. 
-- Put the libcrypto-3-x64.dll into C:/Windows/System32.  Either use the dll from this repo in the /openssl/bin directory or download from [OpenSSL's Github](https://github.com/openssl/openssl/releases). 
+In order to run, simply open the solution file in VS2022 or later and run.  Tested so far in debug, x64 build configuration. 
