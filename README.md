@@ -1,1 +1,2 @@
-In order to run, simply open the solution file in VS2022 or later and run.  Tested so far in debug, x64 build configuration. 
+- In order to run, simply open the solution file in VS2022 or later and run.  Tested so far in debug, x64 build configuration. 
+- In order to use CAN interfaces, you must install PEAK/PCAN drivers https://www.peak-system.com/Drivers.523.0.html?&L=1
